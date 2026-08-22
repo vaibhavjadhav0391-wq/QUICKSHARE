@@ -9,6 +9,7 @@ import { FileTransfer } from '@/components/FileTransfer';
 import { ConnectionStatus } from '@/components/ConnectionStatus';
 import { TransferHistory } from '@/components/TransferHistory';
 import { MenuBar, MenuItem } from '@/components/ui/glow-menu';
+import { HyperText } from '@/components/ui/hyper-text';
 import { buildJoinUrl, isMobileDevice, vibrate, isSecureContext } from '@/utils/deviceDetect';
 
 export function UnifiedApp() {
@@ -262,9 +263,9 @@ export function UnifiedApp() {
       {/* ── HEADER WITH GLOW MENU BAR ── */}
       <header className="border-b border-white/10 bg-slate-950/70 backdrop-blur-md sticky top-0 z-30">
         <div className="max-w-6xl mx-auto px-4 md:px-8 py-3 flex items-center justify-between">
-          <div className="flex items-center gap-3 cursor-pointer" onClick={() => navigate('/')}>
-            <div className="w-10 h-10 rounded-2xl bg-slate-900 border border-blue-500/30 p-1 flex items-center justify-center shadow-lg shadow-blue-500/20">
-              <svg viewBox="0 0 120 120" className="w-full h-full" fill="none">
+          <div className="flex items-center gap-2 cursor-pointer" onClick={() => navigate('/')}>
+            <div className="w-9 h-9 flex items-center justify-center">
+              <svg viewBox="0 0 120 120" className="w-full h-full drop-shadow-md" fill="none">
                 <path d="M35 15C35 9.477 39.477 5 45 5H70L95 30V95C95 100.523 90.523 105 85 105H35C29.477 105 25 100.523 25 95V25C25 19.477 29.477 15 35 15Z" fill="#E2EEFF"/>
                 <path d="M95 30H75C72.239 30 70 27.761 70 25V5L95 30Z" fill="#B4D4FF"/>
                 <circle cx="48" cy="55" r="9" fill="#0052FF"/>
@@ -275,12 +276,7 @@ export function UnifiedApp() {
               </svg>
             </div>
             <div>
-              <span className="font-extrabold text-xl tracking-tight text-white flex items-center gap-2">
-                QuickTransfer
-                <span className="text-[10px] uppercase font-bold tracking-widest bg-amber-500/20 text-amber-300 px-2 py-0.5 rounded-full border border-amber-500/30">
-                  P2P
-                </span>
-              </span>
+              <HyperText text="QuickTransfer" className="text-xl font-extrabold text-white tracking-tight" />
               <p className="text-xs text-white/40 hidden sm:block">Scan. Send. Done.</p>
             </div>
           </div>
