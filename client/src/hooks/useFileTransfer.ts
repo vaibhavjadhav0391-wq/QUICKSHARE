@@ -36,7 +36,9 @@ interface UseFileTransferReturn {
  *   - On 'file-end': assemble Blob, trigger download
  */
 export function useFileTransfer(
-  dataChannelRef: React.RefObject<RTCDataChannel | null>
+  dataChannelRef: React.RefObject<RTCDataChannel | null>,
+  sendFallbackChunk?: (data: unknown) => void,
+  useFallback?: boolean
 ): UseFileTransferReturn {
   const [transfers, setTransfers] = useState<FileTransferItem[]>([]);
 
@@ -59,6 +61,10 @@ export function useFileTransfer(
   }, []);
 
   function sendJSON(msg: DCMessage): void {
+    if (useFallback && sendFallbackChunk) {
+      sendFallbackChunk(msg);
+      return;
+    }
     const ch = dataChannelRef.current;
     if (!ch || ch.readyState !== 'open') return;
     ch.send(JSON.stringify(msg));
@@ -87,7 +93,7 @@ export function useFileTransfer(
 
   const sendFile = useCallback(async (file: File) => {
     const ch = dataChannelRef.current;
-    if (!ch || ch.readyState !== 'open') {
+    if (!useFallback && (!ch || ch.readyState !== 'open')) {
       console.error('[FileTransfer] DataChannel not open');
       return;
     }
@@ -136,12 +142,22 @@ export function useFileTransfer(
       }
 
       // Wait for buffer backpressure
-      await waitForBuffer(ch);
+      if (!useFallback && ch) {
+        await waitForBuffer(ch);
+      } else if (useFallback) {
+        // Simple breathing room for socket.io loop
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      }
 
       // Send chunk metadata (so receiver knows what index is coming)
       sendJSON({ type: 'chunk-meta', transferId, chunkIndex });
+      
       // Send raw binary chunk
-      ch.send(chunk);
+      if (useFallback && sendFallbackChunk) {
+        sendFallbackChunk(chunk);
+      } else if (ch) {
+        ch.send(chunk);
+      }
 
       bytesSent += chunk.byteLength;
       chunkIndex++;
@@ -178,7 +194,7 @@ export function useFileTransfer(
       completedAt: Date.now(),
     });
     console.log(`[FileTransfer] Sent: ${file.name} (${file.size} bytes)`);
-  }, [dataChannelRef, updateTransfer]);
+  }, [dataChannelRef, updateTransfer, useFallback, sendFallbackChunk]);
 
   // ─────────────────────────────────────────────────────────────────────────
   // RECEIVE

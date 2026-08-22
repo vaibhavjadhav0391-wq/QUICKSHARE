@@ -33,8 +33,7 @@ export function UnifiedApp() {
 
   const role = joinToken ? 'mobile' : 'pc';
 
-  const { transfers, sendFile, handleDataChannelMessage, cancelTransfer } =
-    useFileTransfer(dataChannelRef);
+  // We use closures for callbacks to avoid circular dependency issues between hooks.
 
   // ── SIGNALING ──
   const {
@@ -47,6 +46,7 @@ export function UnifiedApp() {
     endSession,
     joinByCode,
     markConnected,
+    sendFallbackChunk,
   } = useSignaling({
     role,
     joinToken,
@@ -65,6 +65,7 @@ export function UnifiedApp() {
     onOffer: (sdp) => handleOffer(sdp),
     onAnswer: (sdp) => handleAnswer(sdp),
     onIceCandidate: (c) => handleIceCandidate(c),
+    onFallbackChunk: (data) => handleDataChannelMessage({ data } as MessageEvent),
   });
 
   // ── WEBRTC ──
@@ -76,7 +77,7 @@ export function UnifiedApp() {
       vibrate([100, 50, 100]);
       markConnected('webrtc');
     },
-    onDataChannelMessage: handleDataChannelMessage,
+    onDataChannelMessage: (e) => handleDataChannelMessage(e),
     onDataChannelClose: () => {
       dataChannelRef.current = null;
     },
@@ -89,6 +90,10 @@ export function UnifiedApp() {
     sendAnswer,
     sendIceCandidate,
   });
+
+  // ── FILE TRANSFER ──
+  const { transfers, sendFile, handleDataChannelMessage, cancelTransfer } =
+    useFileTransfer(dataChannelRef, sendFallbackChunk, sigState === 'ws-fallback');
 
   const isConnected = sigState === 'connected' || sigState === 'ws-fallback';
   const joinUrl = session ? buildJoinUrl(session.token) : (joinToken ? buildJoinUrl(joinToken) : '');

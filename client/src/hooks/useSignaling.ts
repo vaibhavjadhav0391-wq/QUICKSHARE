@@ -22,29 +22,16 @@ interface UseSignalingReturn {
   state: ConnectionState;
   session: SessionInfo | null;
   error: string | null;
-  /** Send WebRTC offer to peer */
   sendOffer: (sdp: RTCSessionDescriptionInit) => void;
-  /** Send WebRTC answer to peer */
   sendAnswer: (sdp: RTCSessionDescriptionInit) => void;
-  /** Send ICE candidate to peer */
   sendIceCandidate: (candidate: RTCIceCandidateInit) => void;
-  /** End the session (PC only) */
   endSession: () => void;
-  /** Send a WS fallback file chunk */
   sendFallbackChunk: (data: unknown) => void;
-  /** Initiate join by short code */
   joinByCode: (code: string) => void;
-  /** Mark the connection as fully established via WebRTC or WS relay */
   markConnected: (via: 'webrtc' | 'ws') => void;
   socket: Socket | null;
 }
 
-/**
- * useSignaling — manages the Socket.IO connection lifecycle and session state.
- *
- * - PC role: automatically creates a session on mount
- * - Mobile role: joins an existing session given a token or short code
- */
 export function useSignaling(options: UseSignalingOptions): UseSignalingReturn {
   const {
     role,
@@ -62,13 +49,48 @@ export function useSignaling(options: UseSignalingOptions): UseSignalingReturn {
   const [session, setSession] = useState<SessionInfo | null>(null);
   const [error, setError] = useState<string | null>(null);
   const socketRef = useRef<Socket | null>(null);
+  const fallbackTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Keep latest callbacks in ref to avoid stale closure issues in socket listeners
+  const callbacksRef = useRef({
+    onPeerJoined,
+    onPeerDisconnected,
+    onSessionEnded,
+    onOffer,
+    onAnswer,
+    onIceCandidate,
+    onFallbackChunk,
+  });
+
+  useEffect(() => {
+    callbacksRef.current = {
+      onPeerJoined,
+      onPeerDisconnected,
+      onSessionEnded,
+      onOffer,
+      onAnswer,
+      onIceCandidate,
+      onFallbackChunk,
+    };
+  });
+
+  const clearFallbackTimer = useCallback(() => {
+    if (fallbackTimerRef.current) {
+      clearTimeout(fallbackTimerRef.current);
+      fallbackTimerRef.current = null;
+    }
+  }, []);
+
+  const markConnected = useCallback((via: 'webrtc' | 'ws') => {
+    clearFallbackTimer();
+    setState(via === 'webrtc' ? 'connected' : 'ws-fallback');
+  }, [clearFallbackTimer]);
 
   useEffect(() => {
     if (!role) return;
 
     const socket = connectSocket();
     socketRef.current = socket;
-    setState('creating');
 
     // ── SOCKET LIFECYCLE ──
     const handleConnect = () => {
@@ -76,6 +98,7 @@ export function useSignaling(options: UseSignalingOptions): UseSignalingReturn {
       setError(null);
 
       if (role === 'pc') {
+        setState('creating');
         socket.emit('create-session');
       } else if (role === 'mobile' && joinToken) {
         socket.emit('join-session', { token: joinToken });
@@ -90,28 +113,42 @@ export function useSignaling(options: UseSignalingOptions): UseSignalingReturn {
 
     socket.on('disconnect', (reason) => {
       console.log('[Signaling] Socket disconnected:', reason);
+      clearFallbackTimer();
       setState('disconnected');
     });
 
     socket.on('connect_error', (err) => {
       console.error('[Signaling] Connection error:', err.message);
-      setError('Unable to connect to server. Please check your internet connection.');
+      setError('Unable to connect to signaling server. Checking connection...');
       setState('error');
     });
 
     // ── SESSION EVENTS ──
     socket.on('session-created', ({ token, shortCode }: { token: string; shortCode: string }) => {
-      console.log('[Signaling] Session created:', token.slice(0, 8));
+      console.log('[Signaling] Session created:', token.slice(0, 8), 'code:', shortCode);
       setSession({ token, shortCode });
       setState('waiting');
     });
 
     socket.on('join-success', () => {
-      console.log('[Signaling] Join success');
+      console.log('[Signaling] Join success on mobile');
       setState('connecting');
+
+      // Start 3.5s fallback timer — if WebRTC P2P fails/stalls, switch to WS relay automatically
+      clearFallbackTimer();
+      fallbackTimerRef.current = setTimeout(() => {
+        setState((current) => {
+          if (current === 'connecting') {
+            console.log('[Signaling] WebRTC timeout reached (3.5s) — auto fallback to WS relay');
+            return 'ws-fallback';
+          }
+          return current;
+        });
+      }, 3500);
     });
 
     socket.on('join-error', ({ message }: { message: string }) => {
+      console.error('[Signaling] Join error:', message);
       setError(message);
       setState('error');
     });
@@ -124,51 +161,65 @@ export function useSignaling(options: UseSignalingOptions): UseSignalingReturn {
 
     // ── PEER EVENTS ──
     socket.on('peer-joined', () => {
-      console.log('[Signaling] Peer joined');
+      console.log('[Signaling] Peer joined on PC');
       setState('connecting');
-      onPeerJoined?.();
+      callbacksRef.current.onPeerJoined?.();
+
+      // Start 3.5s fallback timer on PC side too
+      clearFallbackTimer();
+      fallbackTimerRef.current = setTimeout(() => {
+        setState((current) => {
+          if (current === 'connecting') {
+            console.log('[Signaling] WebRTC timeout reached on PC — auto fallback to WS relay');
+            return 'ws-fallback';
+          }
+          return current;
+        });
+      }, 3500);
     });
 
     socket.on('peer-disconnected', ({ role: peerRole }: { role: 'pc' | 'mobile' }) => {
       console.log('[Signaling] Peer disconnected:', peerRole);
+      clearFallbackTimer();
       setState('waiting');
-      onPeerDisconnected?.(peerRole);
+      callbacksRef.current.onPeerDisconnected?.(peerRole);
     });
 
     socket.on('session-ended', ({ reason }: { reason: string }) => {
       console.log('[Signaling] Session ended:', reason);
+      clearFallbackTimer();
       setState('disconnected');
-      onSessionEnded?.(reason);
+      callbacksRef.current.onSessionEnded?.(reason);
     });
 
     socket.on('session-expired', () => {
       setError('Session expired. Please start a new session.');
+      clearFallbackTimer();
       setState('error');
     });
 
     // ── WEBRTC SIGNALING RELAY ──
     socket.on('offer', ({ sdp }: { sdp: RTCSessionDescriptionInit }) => {
-      onOffer?.(sdp);
+      console.log('[Signaling] Received offer');
+      callbacksRef.current.onOffer?.(sdp);
     });
 
     socket.on('answer', ({ sdp }: { sdp: RTCSessionDescriptionInit }) => {
-      onAnswer?.(sdp);
+      console.log('[Signaling] Received answer');
+      callbacksRef.current.onAnswer?.(sdp);
     });
 
     socket.on('ice-candidate', ({ candidate }: { candidate: RTCIceCandidateInit }) => {
-      onIceCandidate?.(candidate);
+      callbacksRef.current.onIceCandidate?.(candidate);
     });
 
     // ── WS FALLBACK ──
     socket.on('transfer-chunk', (data: unknown) => {
-      onFallbackChunk?.(data);
-    });
-
-    socket.on('transfer-cancel', () => {
-      // Handled by file transfer hook
+      callbacksRef.current.onFallbackChunk?.(data);
     });
 
     return () => {
+      clearFallbackTimer();
       socket.off('connect');
       socket.off('disconnect');
       socket.off('connect_error');
@@ -184,16 +235,9 @@ export function useSignaling(options: UseSignalingOptions): UseSignalingReturn {
       socket.off('answer');
       socket.off('ice-candidate');
       socket.off('transfer-chunk');
-      socket.off('transfer-cancel');
       disconnectSocket();
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [role, joinToken]);
-
-  // ── SET STATE TO CONNECTED (called by PCPage/MobilePage when DataChannel opens) ──
-  const markConnected = useCallback((via: 'webrtc' | 'ws') => {
-    setState(via === 'webrtc' ? 'connected' : 'ws-fallback');
-  }, []);
+  }, [role, joinToken, clearFallbackTimer]);
 
   const sendOffer = useCallback((sdp: RTCSessionDescriptionInit) => {
     const token = session?.token;
@@ -243,9 +287,4 @@ export function useSignaling(options: UseSignalingOptions): UseSignalingReturn {
     markConnected,
     socket: socketRef.current,
   };
-}
-
-/** @deprecated Use markConnected from useSignaling return value */
-export function markSignalingConnected(_socket: Socket | null, _via: 'webrtc' | 'ws'): void {
-  console.warn('markSignalingConnected is deprecated; use markConnected from useSignaling');
 }
