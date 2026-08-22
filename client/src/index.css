@@ -1,0 +1,246 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ──────────────────────────────────────────────────────────────────────────────
+   GLOBAL RESET & BASE
+   ────────────────────────────────────────────────────────────────────────────── */
+@layer base {
+  *, *::before, *::after {
+    box-sizing: border-box;
+  }
+
+  html {
+    -webkit-tap-highlight-color: transparent;
+    scroll-behavior: smooth;
+  }
+
+  body {
+    @apply font-sans bg-surface-950 text-white min-h-screen;
+    background-image:
+      radial-gradient(ellipse at 20% 50%, rgba(12, 111, 216, 0.08) 0%, transparent 60%),
+      radial-gradient(ellipse at 80% 20%, rgba(40, 164, 248, 0.06) 0%, transparent 50%);
+  }
+
+  /* Scrollbar styling */
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { @apply bg-surface-900; }
+  ::-webkit-scrollbar-thumb { @apply bg-surface-800 rounded-full; }
+  ::-webkit-scrollbar-thumb:hover { @apply bg-brand-700; }
+}
+
+/* ──────────────────────────────────────────────────────────────────────────────
+   COMPONENT LAYER
+   ────────────────────────────────────────────────────────────────────────────── */
+@layer components {
+  /* Glass card — the main surface used throughout the app */
+  .glass-card {
+    @apply rounded-2xl border border-white/10 bg-white/5 backdrop-blur-sm;
+    box-shadow: 0 4px 24px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.05);
+  }
+
+  .glass-card-hover {
+    @apply glass-card transition-all duration-200 hover:border-brand-500/30 hover:bg-white/[0.08];
+  }
+
+  /* Primary action button */
+  .btn-primary {
+    @apply inline-flex items-center justify-center gap-2 px-6 py-3 rounded-xl font-semibold text-sm
+           bg-brand-600 hover:bg-brand-500 active:bg-brand-700
+           text-white transition-all duration-150 select-none
+           shadow-lg shadow-brand-900/40 hover:shadow-brand-600/30
+           focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 focus-visible:ring-offset-surface-950
+           disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-brand-600;
+  }
+
+  /* Secondary ghost button */
+  .btn-secondary {
+    @apply inline-flex items-center justify-center gap-2 px-6 py-3 rounded-xl font-semibold text-sm
+           border border-white/15 bg-white/5 hover:bg-white/10 active:bg-white/15
+           text-white/80 hover:text-white transition-all duration-150 select-none
+           focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/30 focus-visible:ring-offset-2 focus-visible:ring-offset-surface-950
+           disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+
+  /* Danger button */
+  .btn-danger {
+    @apply inline-flex items-center justify-center gap-2 px-6 py-3 rounded-xl font-semibold text-sm
+           bg-red-600/20 hover:bg-red-600/30 border border-red-500/30
+           text-red-400 hover:text-red-300 transition-all duration-150 select-none;
+  }
+
+  /* Status badge */
+  .badge {
+    @apply inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium;
+  }
+
+  .badge-success {
+    @apply badge bg-emerald-500/20 text-emerald-300 border border-emerald-500/30;
+  }
+
+  .badge-warning {
+    @apply badge bg-amber-500/20 text-amber-300 border border-amber-500/30;
+  }
+
+  .badge-error {
+    @apply badge bg-red-500/20 text-red-300 border border-red-500/30;
+  }
+
+  .badge-info {
+    @apply badge bg-brand-500/20 text-brand-300 border border-brand-500/30;
+  }
+
+  /* Input field */
+  .input-field {
+    @apply w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10
+           text-white placeholder-white/30 font-mono tracking-widest text-center text-lg
+           focus:outline-none focus:border-brand-500/60 focus:bg-white/[0.08]
+           transition-all duration-150;
+  }
+
+  /* Section heading */
+  .section-heading {
+    @apply text-xs font-semibold uppercase tracking-widest text-white/40 mb-3;
+  }
+
+  /* Shimmer loading skeleton */
+  .skeleton {
+    @apply rounded-lg bg-white/5 animate-shimmer;
+    background-size: 200% 100%;
+    background-image: linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.04) 50%, transparent 100%);
+  }
+}
+
+/* ──────────────────────────────────────────────────────────────────────────────
+   QR CODE CONTAINER
+   ────────────────────────────────────────────────────────────────────────────── */
+.qr-wrapper {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.qr-wrapper::before,
+.qr-wrapper::after {
+  content: '';
+  position: absolute;
+  border-radius: 16px;
+  border: 2px solid rgba(40,164,248,0.3);
+  animation: qrPulse 3s ease-in-out infinite;
+}
+
+.qr-wrapper::before {
+  inset: -8px;
+  animation-delay: 0s;
+}
+
+.qr-wrapper::after {
+  inset: -16px;
+  animation-delay: 0.5s;
+  border-color: rgba(40,164,248,0.15);
+}
+
+@keyframes qrPulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.6; transform: scale(1.02); }
+}
+
+/* ──────────────────────────────────────────────────────────────────────────────
+   PROGRESS BAR
+   ────────────────────────────────────────────────────────────────────────────── */
+.progress-track {
+  @apply w-full h-2 rounded-full bg-white/10 overflow-hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  border-radius: 9999px;
+  background: linear-gradient(90deg, #1287ed, #28a4f8, #50c2ff);
+  background-size: 200% 100%;
+  transition: width 0.3s ease;
+  animation: progressShimmer 2s linear infinite;
+}
+
+@keyframes progressShimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+/* ──────────────────────────────────────────────────────────────────────────────
+   DRAG & DROP ZONE
+   ────────────────────────────────────────────────────────────────────────────── */
+.drop-zone {
+  @apply rounded-2xl border-2 border-dashed border-white/15 p-8
+         flex flex-col items-center justify-center gap-3 cursor-pointer
+         transition-all duration-200 text-center;
+}
+
+.drop-zone.active {
+  @apply border-brand-500/60 bg-brand-500/5;
+  box-shadow: 0 0 30px rgba(40,164,248,0.1);
+}
+
+.drop-zone:hover {
+  @apply border-white/25 bg-white/[0.03];
+}
+
+/* ──────────────────────────────────────────────────────────────────────────────
+   CAMERA SCANNER
+   ────────────────────────────────────────────────────────────────────────────── */
+.scanner-overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.scanner-corner {
+  position: absolute;
+  width: 24px;
+  height: 24px;
+  border-color: #28a4f8;
+  border-style: solid;
+}
+
+.scanner-corner.tl { top: 20%; left: 20%; border-width: 3px 0 0 3px; }
+.scanner-corner.tr { top: 20%; right: 20%; border-width: 3px 3px 0 0; }
+.scanner-corner.bl { bottom: 20%; left: 20%; border-width: 0 0 3px 3px; }
+.scanner-corner.br { bottom: 20%; right: 20%; border-width: 0 3px 3px 0; }
+
+.scanner-line {
+  position: absolute;
+  left: 20%;
+  right: 20%;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, #28a4f8, transparent);
+  animation: scanLine 2s ease-in-out infinite;
+}
+
+@keyframes scanLine {
+  0% { top: 20%; }
+  50% { top: 79%; }
+  100% { top: 20%; }
+}
+
+/* ──────────────────────────────────────────────────────────────────────────────
+   CONNECTION STATUS DOT
+   ────────────────────────────────────────────────────────────────────────────── */
+.status-dot {
+  @apply w-2.5 h-2.5 rounded-full;
+}
+
+.status-dot.connected { @apply bg-emerald-400; animation: dotPulse 2s infinite; }
+.status-dot.waiting   { @apply bg-amber-400; animation: dotPulse 1.5s infinite; }
+.status-dot.error     { @apply bg-red-400; }
+.status-dot.idle      { @apply bg-white/30; }
+
+@keyframes dotPulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+/* ──────────────────────────────────────────────────────────────────────────────
+   MOBILE SAFE AREA
+   ────────────────────────────────────────────────────────────────────────────── */
+.safe-top    { padding-top: env(safe-area-inset-top); }
+.safe-bottom { padding-bottom: env(safe-area-inset-bottom); }
