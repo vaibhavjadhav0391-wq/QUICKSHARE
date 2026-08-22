@@ -8,6 +8,7 @@ import { QRScanner } from '@/components/QRScanner';
 import { FileTransfer } from '@/components/FileTransfer';
 import { ConnectionStatus } from '@/components/ConnectionStatus';
 import { TransferHistory } from '@/components/TransferHistory';
+import { MenuBar, MenuItem } from '@/components/ui/glow-menu';
 import { buildJoinUrl, isMobileDevice, vibrate, isSecureContext } from '@/utils/deviceDetect';
 
 export function UnifiedApp() {
@@ -23,6 +24,7 @@ export function UnifiedApp() {
   const [codeInput, setCodeInput] = useState('');
   const [joinToken, setJoinToken] = useState<string | undefined>(urlToken);
   const [copied, setCopied] = useState(false);
+  const [activeNav, setActiveNav] = useState('Home');
 
   const dataChannelRef = useRef<RTCDataChannel | null>(null);
   const isMobile = isMobileDevice();
@@ -144,6 +146,66 @@ export function UnifiedApp() {
     }
   };
 
+  const handleNavClick = (label: string) => {
+    setActiveNav(label);
+    if (label === 'Scan QR') {
+      setShowScanner(true);
+    } else if (label === 'Enter Code') {
+      setShowCodeModal(true);
+    } else if (label === 'New Session') {
+      handleReset();
+    } else if (label === 'Home') {
+      navigate('/');
+    }
+  };
+
+  const navItems: MenuItem[] = [
+    {
+      icon: () => (
+        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
+        </svg>
+      ),
+      label: "Home",
+      href: "#",
+      gradient: "radial-gradient(circle, rgba(59,130,246,0.25) 0%, rgba(37,99,235,0.1) 50%, rgba(29,78,216,0) 100%)",
+      iconColor: "text-blue-400",
+    },
+    {
+      icon: () => (
+        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z" />
+        </svg>
+      ),
+      label: "Scan QR",
+      href: "#",
+      gradient: "radial-gradient(circle, rgba(245,158,11,0.25) 0%, rgba(217,119,6,0.1) 50%, rgba(180,83,9,0) 100%)",
+      iconColor: "text-amber-400",
+    },
+    {
+      icon: () => (
+        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 0121 9z" />
+        </svg>
+      ),
+      label: "Enter Code",
+      href: "#",
+      gradient: "radial-gradient(circle, rgba(168,85,247,0.25) 0%, rgba(147,51,234,0.1) 50%, rgba(126,34,206,0) 100%)",
+      iconColor: "text-purple-400",
+    },
+    {
+      icon: () => (
+        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+        </svg>
+      ),
+      label: "New Session",
+      href: "#",
+      gradient: "radial-gradient(circle, rgba(239,68,68,0.25) 0%, rgba(220,38,38,0.1) 50%, rgba(185,28,28,0) 100%)",
+      iconColor: "text-red-400",
+    },
+  ];
+
   useEffect(() => {
     if (urlToken && urlToken !== joinToken) {
       setJoinToken(urlToken);
@@ -151,7 +213,7 @@ export function UnifiedApp() {
   }, [urlToken, joinToken]);
 
   return (
-    <div key={resetKey} className="min-h-screen flex flex-col bg-surface-950 text-white font-sans selection:bg-amber-500/30">
+    <div key={resetKey} className="min-h-screen flex flex-col text-white font-sans selection:bg-amber-500/30">
       {/* ── QR CAMERA SCANNER MODAL ── */}
       {showScanner && (
         <QRScanner
@@ -197,9 +259,9 @@ export function UnifiedApp() {
         </div>
       )}
 
-      {/* ── HEADER ── */}
-      <header className="border-b border-white/10 bg-surface-900/60 backdrop-blur-md sticky top-0 z-30">
-        <div className="max-w-6xl mx-auto px-4 md:px-8 py-4 flex items-center justify-between">
+      {/* ── HEADER WITH GLOW MENU BAR ── */}
+      <header className="border-b border-white/10 bg-slate-950/70 backdrop-blur-md sticky top-0 z-30">
+        <div className="max-w-6xl mx-auto px-4 md:px-8 py-3 flex items-center justify-between">
           <div className="flex items-center gap-3 cursor-pointer" onClick={() => navigate('/')}>
             <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-amber-600 to-amber-400 flex items-center justify-center shadow-lg shadow-amber-500/20">
               <svg className="w-6 h-6 text-slate-950 font-black" fill="currentColor" viewBox="0 0 24 24">
@@ -217,38 +279,12 @@ export function UnifiedApp() {
             </div>
           </div>
 
-          <div className="flex items-center gap-3">
-            <button
-              onClick={() => setShowScanner(true)}
-              className="btn-secondary text-xs sm:text-sm py-2 px-3 sm:px-4 border-amber-500/30 text-amber-300 hover:bg-amber-500/10"
-              title="Scan QR Code with Camera"
-              id="header-scan-qr"
-            >
-              <svg className="w-4 h-4 text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                  d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z" />
-              </svg>
-              <span className="hidden sm:inline">Scan QR</span>
-            </button>
-
-            <button
-              onClick={() => setShowCodeModal(true)}
-              className="btn-secondary text-xs sm:text-sm py-2 px-3"
-              title="Enter Short Code"
-            >
-              Enter Code
-            </button>
-
-            {session && (
-              <button
-                onClick={handleReset}
-                className="btn-secondary text-xs py-2 px-3 hover:bg-red-500/10 hover:text-red-400"
-                title="New Session"
-              >
-                Reset
-              </button>
-            )}
-          </div>
+          {/* 🌟 Glowing 3D Navigation Menu */}
+          <MenuBar
+            items={navItems}
+            activeItem={activeNav}
+            onItemClick={handleNavClick}
+          />
         </div>
       </header>
 
@@ -271,7 +307,7 @@ export function UnifiedApp() {
         {/* Dynamic Grid: Left (Action Box) + Right (Hero/Details) */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12 items-stretch">
 
-          {/* ── LEFT COLUMN: MAIN ACTION CARD (ToffeeShare style) ── */}
+          {/* ── LEFT COLUMN: MAIN ACTION CARD ── */}
           <div className="lg:col-span-6 flex flex-col">
             <div className="glass-card p-6 md:p-8 flex flex-col items-center justify-center text-center h-full min-h-[420px] border-white/10 relative overflow-hidden group">
               
@@ -351,7 +387,7 @@ export function UnifiedApp() {
             </div>
           </div>
 
-          {/* ── RIGHT COLUMN: HERO & DETAILS (ToffeeShare layout) ── */}
+          {/* ── RIGHT COLUMN: HERO & DETAILS ── */}
           <div className="lg:col-span-6 flex flex-col justify-between">
             <div>
               <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/5 border border-white/10 text-xs text-white/70 mb-6">
