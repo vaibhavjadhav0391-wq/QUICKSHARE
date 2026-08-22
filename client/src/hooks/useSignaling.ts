@@ -16,6 +16,7 @@ interface UseSignalingOptions {
   onAnswer?: (sdp: RTCSessionDescriptionInit) => void;
   onIceCandidate?: (candidate: RTCIceCandidateInit) => void;
   onFallbackChunk?: (data: unknown) => void;
+  onCodeResolved?: (token: string) => void;
 }
 
 interface UseSignalingReturn {
@@ -43,6 +44,7 @@ export function useSignaling(options: UseSignalingOptions): UseSignalingReturn {
     onAnswer,
     onIceCandidate,
     onFallbackChunk,
+    onCodeResolved,
   } = options;
 
   const [state, setState] = useState<ConnectionState>('idle');
@@ -60,6 +62,7 @@ export function useSignaling(options: UseSignalingOptions): UseSignalingReturn {
     onAnswer,
     onIceCandidate,
     onFallbackChunk,
+    onCodeResolved,
   });
 
   useEffect(() => {
@@ -71,6 +74,7 @@ export function useSignaling(options: UseSignalingOptions): UseSignalingReturn {
       onAnswer,
       onIceCandidate,
       onFallbackChunk,
+      onCodeResolved,
     };
   });
 
@@ -155,8 +159,7 @@ export function useSignaling(options: UseSignalingOptions): UseSignalingReturn {
 
     socket.on('code-resolved', ({ token }: { token: string }) => {
       console.log('[Signaling] Code resolved to token:', token);
-      socket.emit('join-session', { token });
-      setState('connecting');
+      callbacksRef.current.onCodeResolved?.(token);
     });
 
     // ── PEER EVENTS ──
@@ -214,8 +217,8 @@ export function useSignaling(options: UseSignalingOptions): UseSignalingReturn {
     });
 
     // ── WS FALLBACK ──
-    socket.on('transfer-chunk', (data: unknown) => {
-      callbacksRef.current.onFallbackChunk?.(data);
+    socket.on('transfer-chunk', (payload: { token: string; chunk: unknown }) => {
+      callbacksRef.current.onFallbackChunk?.(payload.chunk);
     });
 
     return () => {
@@ -240,33 +243,34 @@ export function useSignaling(options: UseSignalingOptions): UseSignalingReturn {
   }, [role, joinToken, clearFallbackTimer]);
 
   const sendOffer = useCallback((sdp: RTCSessionDescriptionInit) => {
-    const token = session?.token;
+    const token = session?.token || joinToken;
     if (!token || !socketRef.current) return;
     socketRef.current.emit('offer', { token, sdp });
-  }, [session]);
+  }, [session, joinToken]);
 
   const sendAnswer = useCallback((sdp: RTCSessionDescriptionInit) => {
-    const token = session?.token;
+    const token = session?.token || joinToken;
     if (!token || !socketRef.current) return;
     socketRef.current.emit('answer', { token, sdp });
-  }, [session]);
+  }, [session, joinToken]);
 
   const sendIceCandidate = useCallback((candidate: RTCIceCandidateInit) => {
-    const token = session?.token;
+    const token = session?.token || joinToken;
     if (!token || !socketRef.current) return;
     socketRef.current.emit('ice-candidate', { token, candidate });
-  }, [session]);
+  }, [session, joinToken]);
 
   const endSession = useCallback(() => {
-    const token = session?.token;
+    const token = session?.token || joinToken;
     if (!token || !socketRef.current) return;
     socketRef.current.emit('end-session', { token });
-  }, [session]);
+  }, [session, joinToken]);
 
   const sendFallbackChunk = useCallback((data: unknown) => {
-    if (!socketRef.current) return;
-    socketRef.current.emit('transfer-chunk', data);
-  }, []);
+    const token = session?.token || joinToken;
+    if (!token || !socketRef.current) return;
+    socketRef.current.emit('transfer-chunk', { token, chunk: data });
+  }, [session, joinToken]);
 
   const joinByCode = useCallback((code: string) => {
     if (!socketRef.current) return;

@@ -62,6 +62,9 @@ export function UnifiedApp() {
     onSessionEnded: () => {
       handleReset();
     },
+    onCodeResolved: (token) => {
+      setJoinToken(token);
+    },
     onOffer: (sdp) => handleOffer(sdp),
     onAnswer: (sdp) => handleAnswer(sdp),
     onIceCandidate: (c) => handleIceCandidate(c),
