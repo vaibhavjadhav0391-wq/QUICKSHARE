@@ -54,9 +54,15 @@ export function QRCodeDisplay({ value, size = 220, className = '' }: QRCodeDispl
 
           {/* Center Brand Badge Icon Overlay */}
           <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-            <div className="w-10 h-10 rounded-xl bg-slate-950 border-2 border-amber-400 flex items-center justify-center shadow-lg shadow-amber-500/40">
-              <svg className="w-5 h-5 text-amber-400" fill="currentColor" viewBox="0 0 24 24">
-                <path d="M13 10V3L4 14h7v7l9-11h-7z" />
+            <div className="w-10 h-10 rounded-xl bg-slate-950 border-2 border-blue-400 p-1 flex items-center justify-center shadow-lg shadow-blue-500/40">
+              <svg viewBox="0 0 120 120" className="w-full h-full" fill="none">
+                <path d="M35 15C35 9.477 39.477 5 45 5H70L95 30V95C95 100.523 90.523 105 85 105H35C29.477 105 25 100.523 25 95V25C25 19.477 29.477 15 35 15Z" fill="#E2EEFF"/>
+                <path d="M95 30H75C72.239 30 70 27.761 70 25V5L95 30Z" fill="#B4D4FF"/>
+                <circle cx="48" cy="55" r="9" fill="#0052FF"/>
+                <circle cx="78" cy="40" r="9" fill="#0052FF"/>
+                <circle cx="78" cy="70" r="9" fill="#0052FF"/>
+                <path d="M56 51L70 44M56 59L70 66" stroke="#0052FF" strokeWidth="5" strokeLinecap="round"/>
+                <path d="M12 45H22M4 65H18M12 55H28" stroke="#0052FF" strokeWidth="4" strokeLinecap="round"/>
               </svg>
             </div>
           </div>
