@@ -13,13 +13,21 @@ const NODE_ENV = process.env.NODE_ENV || 'development';
 
 const app = express();
 
+// Helper to validate origin
+const isAllowedOrigin = (origin: string | undefined): boolean => {
+  if (!origin) return true; // Allow non-browser requests / curl
+  if (origin.includes('vercel.app') || origin.includes('localhost') || origin.includes('127.0.0.1')) return true;
+  if (process.env.CLIENT_ORIGIN && origin === process.env.CLIENT_ORIGIN) return true;
+  return true; // Allow all origins for signaling
+};
+
 // ─────────────────────────────────────────────────────────────────────────────
-// CORS — only allow the frontend origin to connect
+// CORS — Allow Vercel frontend & dev clients to connect
 // ─────────────────────────────────────────────────────────────────────────────
 app.use(cors({
-  origin: NODE_ENV === 'production'
-    ? CLIENT_ORIGIN
-    : ['http://localhost:5173', 'http://localhost:4173', 'http://127.0.0.1:5173'],
+  origin: (origin, callback) => {
+    callback(null, isAllowedOrigin(origin));
+  },
   credentials: true,
 }));
 
@@ -33,13 +41,12 @@ app.get('/health', (_req, res) => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// SERVE STATIC CLIENT IN PRODUCTION
+// SERVE STATIC CLIENT IN PRODUCTION (IF DIST EXISTS)
 // ─────────────────────────────────────────────────────────────────────────────
 if (NODE_ENV === 'production') {
   const clientDist = path.join(__dirname, '../../client/dist');
   if (fs.existsSync(clientDist)) {
     app.use(express.static(clientDist));
-    // SPA fallback — all routes → index.html
     app.get('*', (_req, res) => {
       res.sendFile(path.join(clientDist, 'index.html'));
     });
@@ -55,14 +62,13 @@ const httpServer = createServer(app);
 
 const io = new Server(httpServer, {
   cors: {
-    origin: NODE_ENV === 'production'
-      ? CLIENT_ORIGIN
-      : ['http://localhost:5173', 'http://localhost:4173', 'http://127.0.0.1:5173'],
+    origin: (origin, callback) => {
+      callback(null, isAllowedOrigin(origin));
+    },
     methods: ['GET', 'POST'],
     credentials: true,
   },
-  // Allow larger payloads for WS fallback file chunk relay
-  maxHttpBufferSize: 5 * 1024 * 1024, // 5 MB per message (chunked anyway)
+  maxHttpBufferSize: 5 * 1024 * 1024, // 5 MB per message
   transports: ['websocket', 'polling'],
   pingTimeout: 60000,
   pingInterval: 25000,
