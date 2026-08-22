@@ -16,10 +16,9 @@
   }
 
   body {
-    @apply font-sans bg-surface-950 text-white min-h-screen;
-    background-image:
-      radial-gradient(ellipse at 20% 50%, rgba(12, 111, 216, 0.08) 0%, transparent 60%),
-      radial-gradient(ellipse at 80% 20%, rgba(40, 164, 248, 0.06) 0%, transparent 50%);
+    @apply font-sans text-white min-h-screen relative;
+    background: radial-gradient(125% 125% at 50% 10%, #000 40%, #63e 100%);
+    background-attachment: fixed;
   }
 
   /* Scrollbar styling */
