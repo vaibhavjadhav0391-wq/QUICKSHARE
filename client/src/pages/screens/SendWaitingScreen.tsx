@@ -13,16 +13,56 @@ export function SendWaitingScreen({ session, joinUrl, onCancel }: SendWaitingScr
 
   const copyCode = async () => {
     if (!session) return;
-    try { await navigator.clipboard.writeText(session.shortCode); } catch { /* ignore */ }
-    setCopied('code');
-    setTimeout(() => setCopied(null), 2000);
+    try { 
+      await navigator.clipboard.writeText(session.shortCode); 
+      setCopied('code');
+      setTimeout(() => setCopied(null), 2000);
+    } catch { 
+      fallbackCopy(session.shortCode, 'code');
+    }
   };
 
   const copyLink = async () => {
     if (!joinUrl) return;
-    try { await navigator.clipboard.writeText(joinUrl); } catch { /* ignore */ }
-    setCopied('link');
-    setTimeout(() => setCopied(null), 2000);
+    try { 
+      await navigator.clipboard.writeText(joinUrl); 
+      setCopied('link');
+      setTimeout(() => setCopied(null), 2000);
+    } catch { 
+      fallbackCopy(joinUrl, 'link');
+    }
+  };
+
+  const fallbackCopy = (text: string, type: 'code' | 'link') => {
+    try {
+      const input = document.createElement('input');
+      input.value = text;
+      document.body.appendChild(input);
+      input.select();
+      document.execCommand('copy');
+      document.body.removeChild(input);
+      setCopied(type);
+      setTimeout(() => setCopied(null), 2000);
+    } catch (err) {
+      alert(`Unable to copy automatically. Please select and copy this ${type}: ${text}`);
+    }
+  };
+
+  const shareLink = async () => {
+    if (!joinUrl) return;
+    if (navigator.share) {
+      try {
+        await navigator.share({
+          title: 'QuickTransfer',
+          text: 'Receive files using this QuickTransfer link',
+          url: joinUrl
+        });
+      } catch (err) {
+        /* ignore */
+      }
+    } else {
+      copyLink();
+    }
   };
 
   return (
@@ -80,22 +120,30 @@ export function SendWaitingScreen({ session, joinUrl, onCancel }: SendWaitingScr
       </div>
 
       {/* Copy Actions */}
-      <div className="flex gap-3 w-full">
+      <div className="flex gap-2 w-full">
         <button
           onClick={copyCode}
           disabled={!session}
-          className="flex-1 py-3 rounded-2xl bg-white/5 border border-white/10 text-white/70 text-sm font-medium hover:bg-white/10 hover:border-white/20 transition-all disabled:opacity-40"
+          className="flex-1 py-3 px-1 rounded-2xl bg-white/5 border border-white/10 text-white/70 text-xs sm:text-sm font-medium hover:bg-white/10 hover:border-white/20 transition-all disabled:opacity-40 whitespace-nowrap"
           id="btn-copy-code"
         >
-          {copied === 'code' ? '✓ Copied' : '📋 Copy Code'}
+          {copied === 'code' ? '✓ Copied' : '📋 Code'}
         </button>
         <button
           onClick={copyLink}
           disabled={!session}
-          className="flex-1 py-3 rounded-2xl bg-white/5 border border-white/10 text-white/70 text-sm font-medium hover:bg-white/10 hover:border-white/20 transition-all disabled:opacity-40"
+          className="flex-1 py-3 px-1 rounded-2xl bg-white/5 border border-white/10 text-white/70 text-xs sm:text-sm font-medium hover:bg-white/10 hover:border-white/20 transition-all disabled:opacity-40 whitespace-nowrap"
           id="btn-copy-link"
         >
-          {copied === 'link' ? '✓ Copied' : '🔗 Copy Link'}
+          {copied === 'link' ? '✓ Copied' : '🔗 Link'}
+        </button>
+        <button
+          onClick={shareLink}
+          disabled={!session}
+          className="flex-1 py-3 px-1 rounded-2xl bg-white/5 border border-white/10 text-white/70 text-xs sm:text-sm font-medium hover:bg-white/10 hover:border-white/20 transition-all disabled:opacity-40 whitespace-nowrap"
+          id="btn-share-link"
+        >
+          📤 Share
         </button>
       </div>
 

@@ -186,6 +186,8 @@ export function UnifiedApp() {
       setJoinToken(urlToken);
       userRole.current = 'receiver';
       setScreen('receive-connect');
+      // Clean up the URL
+      window.history.replaceState({}, '', window.location.pathname.replace(`/join/${urlToken}`, '/'));
     }
   }, [urlToken]);
 
