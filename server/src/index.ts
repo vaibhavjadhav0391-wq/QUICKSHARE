@@ -4,6 +4,7 @@ import { createServer } from 'http';
 import { Server } from 'socket.io';
 import cors from 'cors';
 import path from 'path';
+import fs from 'fs';
 import { registerSocketHandlers } from './signaling/socketHandler';
 
 const PORT = parseInt(process.env.PORT || '3001', 10);
@@ -36,11 +37,15 @@ app.get('/health', (_req, res) => {
 // ─────────────────────────────────────────────────────────────────────────────
 if (NODE_ENV === 'production') {
   const clientDist = path.join(__dirname, '../../client/dist');
-  app.use(express.static(clientDist));
-  // SPA fallback — all routes → index.html
-  app.get('*', (_req, res) => {
-    res.sendFile(path.join(clientDist, 'index.html'));
-  });
+  if (fs.existsSync(clientDist)) {
+    app.use(express.static(clientDist));
+    // SPA fallback — all routes → index.html
+    app.get('*', (_req, res) => {
+      res.sendFile(path.join(clientDist, 'index.html'));
+    });
+  } else {
+    console.log('[Server] Client dist folder not found. Assuming frontend is deployed separately.');
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
