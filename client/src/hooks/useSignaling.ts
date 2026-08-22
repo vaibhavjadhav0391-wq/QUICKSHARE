@@ -71,7 +71,7 @@ export function useSignaling(options: UseSignalingOptions): UseSignalingReturn {
     setState('creating');
 
     // ── SOCKET LIFECYCLE ──
-    socket.on('connect', () => {
+    const handleConnect = () => {
       console.log('[Signaling] Socket connected:', socket.id);
       setError(null);
 
@@ -81,7 +81,12 @@ export function useSignaling(options: UseSignalingOptions): UseSignalingReturn {
         socket.emit('join-session', { token: joinToken });
         setState('connecting');
       }
-    });
+    };
+
+    if (socket.connected) {
+      handleConnect();
+    }
+    socket.on('connect', handleConnect);
 
     socket.on('disconnect', (reason) => {
       console.log('[Signaling] Socket disconnected:', reason);
@@ -112,7 +117,9 @@ export function useSignaling(options: UseSignalingOptions): UseSignalingReturn {
     });
 
     socket.on('code-resolved', ({ token }: { token: string }) => {
+      console.log('[Signaling] Code resolved to token:', token);
       socket.emit('join-session', { token });
+      setState('connecting');
     });
 
     // ── PEER EVENTS ──
@@ -219,6 +226,7 @@ export function useSignaling(options: UseSignalingOptions): UseSignalingReturn {
 
   const joinByCode = useCallback((code: string) => {
     if (!socketRef.current) return;
+    setState('connecting');
     socketRef.current.emit('join-by-code', { shortCode: code });
   }, []);
 

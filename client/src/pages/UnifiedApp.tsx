@@ -81,8 +81,9 @@ export function UnifiedApp() {
       dataChannelRef.current = null;
     },
     onConnectionFailed: () => {
-      console.warn('[QuickTransfer] WebRTC connection failed');
+      console.warn('[QuickTransfer] WebRTC connection failed — switching to WS relay');
       setWebRTCFailed(true);
+      markConnected('ws');
     },
     sendOffer,
     sendAnswer,
