@@ -38,6 +38,7 @@ export default {
         'shimmer': 'shimmer 1.5s infinite',
         'spin-slow': 'spin 3s linear infinite',
         'bounce-gentle': 'bounceGentle 2s ease-in-out infinite',
+        'scale-up': 'scaleUp 0.3s ease-out',
       },
       keyframes: {
         fadeIn: {
@@ -60,6 +61,10 @@ export default {
         bounceGentle: {
           '0%, 100%': { transform: 'translateY(-4px)' },
           '50%': { transform: 'translateY(4px)' },
+        },
+        scaleUp: {
+          from: { opacity: '0', transform: 'scale(0.95)' },
+          to: { opacity: '1', transform: 'scale(1)' },
         },
       },
       backdropBlur: {
