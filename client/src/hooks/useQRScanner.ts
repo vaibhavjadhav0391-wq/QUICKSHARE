@@ -12,16 +12,6 @@ interface UseQRScannerReturn {
   error: string | null;
 }
 
-/**
- * useQRScanner — uses getUserMedia + jsQR to scan QR codes from the camera.
- *
- * How it works:
- *   1. Requests camera permission (rear camera preferred)
- *   2. Streams video to a <video> element
- *   3. Every animation frame, draws video frame to a hidden <canvas>
- *   4. jsQR analyzes the canvas pixel data for QR codes
- *   5. On detection, calls onResult and stops the camera
- */
 export function useQRScanner(onResult: (text: string) => void): UseQRScannerReturn {
   const [state, setState] = useState<ScannerState>('idle');
   const [error, setError] = useState<string | null>(null);
@@ -30,7 +20,7 @@ export function useQRScanner(onResult: (text: string) => void): UseQRScannerRetu
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const rafRef = useRef<number | null>(null);
-  const activeRef = useRef(false); // prevents stale closure issues
+  const activeRef = useRef(false);
 
   const stop = useCallback(() => {
     activeRef.current = false;
@@ -55,64 +45,82 @@ export function useQRScanner(onResult: (text: string) => void): UseQRScannerRetu
 
     if (video.readyState === video.HAVE_ENOUGH_DATA) {
       const ctx = canvas.getContext('2d', { willReadFrequently: true });
-      if (!ctx) return;
+      if (ctx) {
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
-      canvas.width = video.videoWidth;
-      canvas.height = video.videoHeight;
-      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        const code = jsQR(imageData.data, imageData.width, imageData.height, {
+          inversionAttempts: 'dontInvert',
+        });
 
-      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-      const code = jsQR(imageData.data, imageData.width, imageData.height, {
-        inversionAttempts: 'dontInvert',
-      });
-
-      if (code && code.data) {
-        console.log('[QRScanner] Detected QR:', code.data);
-        stop();
-        setState('success');
-        onResult(code.data);
-        return; // Don't request another frame
+        if (code && code.data) {
+          console.log('[QRScanner] Detected QR:', code.data);
+          stop();
+          setState('success');
+          onResult(code.data);
+          return;
+        }
       }
     }
 
-    rafRef.current = requestAnimationFrame(scan);
+    if (activeRef.current) {
+      rafRef.current = requestAnimationFrame(scan);
+    }
   }, [stop, onResult]);
 
+  const attachStreamToVideo = useCallback((stream: MediaStream) => {
+    if (videoRef.current) {
+      videoRef.current.srcObject = stream;
+      videoRef.current.setAttribute('playsinline', 'true');
+      videoRef.current.play().catch((err) => {
+        console.warn('[QRScanner] Play error:', err);
+      });
+    }
+  }, []);
+
   const start = useCallback(async () => {
-    if (state === 'scanning' || state === 'requesting') return;
     setError(null);
     setState('requesting');
 
     if (!navigator.mediaDevices?.getUserMedia) {
-      setError('Camera not available in this browser. Please use Chrome or Firefox on Android, or Safari on iOS.');
+      setError('Camera not available in this browser. Please use Chrome, Firefox, or Safari.');
       setState('error');
       return;
     }
 
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: {
-          facingMode: { ideal: 'environment' }, // Rear camera
-          width: { ideal: 1280 },
-          height: { ideal: 720 },
-        },
-      });
-
-      streamRef.current = stream;
-
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        videoRef.current.setAttribute('playsinline', 'true'); // Required for iOS
-        await videoRef.current.play();
+      let stream: MediaStream;
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            facingMode: { ideal: 'environment' },
+            width: { ideal: 1280 },
+            height: { ideal: 720 },
+          },
+        });
+      } catch {
+        // Fallback for laptop webcams or strict devices
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: true,
+        });
       }
 
+      streamRef.current = stream;
       activeRef.current = true;
       setState('scanning');
-      rafRef.current = requestAnimationFrame(scan);
+
+      // Attach stream on next tick to ensure <video> element is rendered in DOM
+      setTimeout(() => {
+        attachStreamToVideo(stream);
+        rafRef.current = requestAnimationFrame(scan);
+      }, 50);
+
     } catch (err) {
       const e = err as DOMException;
       if (e.name === 'NotAllowedError' || e.name === 'PermissionDeniedError') {
-        setError('Camera permission denied. Please allow camera access in your browser settings and try again.');
+        setError('Camera permission denied. Please allow camera access in browser settings.');
         setState('denied');
       } else if (e.name === 'NotFoundError') {
         setError('No camera found on this device.');
@@ -122,14 +130,22 @@ export function useQRScanner(onResult: (text: string) => void): UseQRScannerRetu
         setState('error');
       }
     }
-  }, [state, scan]);
+  }, [scan, attachStreamToVideo]);
 
-  // Cleanup on unmount
+  // Auto-start camera when scanner mounts
   useEffect(() => {
+    start();
     return () => {
       stop();
     };
-  }, [stop]);
+  }, []);
+
+  // Ensure video element receives stream when mounted
+  useEffect(() => {
+    if (state === 'scanning' && streamRef.current) {
+      attachStreamToVideo(streamRef.current);
+    }
+  }, [state, attachStreamToVideo]);
 
   return { state, videoRef, canvasRef, start, stop, error };
 }
