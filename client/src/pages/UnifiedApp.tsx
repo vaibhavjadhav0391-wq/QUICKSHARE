@@ -528,12 +528,6 @@ export function UnifiedApp() {
               <span>⚡ How it works</span>
             </button>
 
-            {/* BB-8 Theme Toggle */}
-            <StarWarsToggleSwitch
-              checked={isDark}
-              onChange={toggleTheme}
-            />
-
             {/* New Session / Cancel (only when not on home) */}
             {screen !== 'home' && (
               <button
@@ -560,6 +554,12 @@ export function UnifiedApp() {
       <footer className="border-t border-white/5 py-5 text-center text-xs text-white/20">
         QuickTransfer · P2P Encrypted File Sharing · No Accounts · No Storage
       </footer>
+
+      {/* ── Floating BB-8 Theme Toggle ── */}
+      <StarWarsToggleSwitch
+        checked={isDark}
+        onChange={toggleTheme}
+      />
     </div>
   );
 }

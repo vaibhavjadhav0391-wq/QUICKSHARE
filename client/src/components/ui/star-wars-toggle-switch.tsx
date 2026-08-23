@@ -55,12 +55,26 @@ export function StarWarsToggleSwitch({ checked, onChange, className }: StarWarsT
 }
 
 const StyledWrapper = styled.div`
-  display: inline-flex;
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  z-index: 1000;
+  display: flex;
   align-items: center;
   justify-content: center;
+  transition: transform 0.2s ease;
+
+  @media (max-width: 640px) {
+    bottom: 16px;
+    right: 16px;
+  }
+
+  &:hover {
+    transform: scale(1.06);
+  }
 
   .bb8-toggle {
-    --toggle-size: 5.5px;
+    --toggle-size: 7px;
     --toggle-width: 10.625em;
     --toggle-height: 5.625em;
     --toggle-offset: calc((var(--toggle-height) - var(--bb8-diameter)) / 2);

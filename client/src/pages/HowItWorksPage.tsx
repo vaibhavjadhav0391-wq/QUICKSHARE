@@ -27,10 +27,6 @@ export function HowItWorksPage() {
           </div>
 
           <div className="flex items-center gap-3">
-            <StarWarsToggleSwitch
-              checked={isDark}
-              onChange={toggleTheme}
-            />
             <button
               onClick={() => navigate('/')}
               className="px-4 py-2 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 text-slate-950 font-bold text-xs hover:from-amber-400 hover:to-orange-400 transition-all shadow-md shadow-amber-500/20"
@@ -59,6 +55,12 @@ export function HowItWorksPage() {
       <footer className="border-t border-white/5 py-6 text-center text-xs text-white/30 bg-black">
         QuickTransfer · P2P Encrypted File Sharing · Visual Flow Guide
       </footer>
+
+      {/* Floating BB-8 Theme Toggle */}
+      <StarWarsToggleSwitch
+        checked={isDark}
+        onChange={toggleTheme}
+      />
     </div>
   );
 }
