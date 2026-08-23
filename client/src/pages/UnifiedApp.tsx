@@ -69,6 +69,9 @@ export function UnifiedApp() {
     urlToken ? 'mobile' : null
   );
 
+  const sessionGenerationRef = useRef(0);
+  const handleResetRef = useRef<() => void>(() => {});
+
   // ── SIGNALING ──
   const {
     state: sigState,
@@ -78,6 +81,7 @@ export function UnifiedApp() {
     sendAnswer,
     sendIceCandidate,
     endSession,
+    sendTransferCancel,
     joinByCode,
     markConnected,
     sendFallbackChunk,
@@ -88,28 +92,24 @@ export function UnifiedApp() {
       console.log('[QuickTransfer] Peer connected (sender side)');
       setPeerJoined(true);
       vibrate(100);
-      // PC (sender) → receiver connected → move to confirm-send screen
       if (userRole.current === 'sender') {
         setScreen('connected-sender');
       }
     },
-    onPeerDisconnected: () => {
-      setPeerJoined(false);
-      dataChannelRef.current = null;
-      clearAllFileState();
-      // Return to appropriate waiting state
-      if (userRole.current === 'sender') {
-        setScreen('send-waiting');
-      } else {
-        setScreen('receive-connect');
-      }
+    onPeerDisconnected: (role) => {
+      console.log('[QuickTransfer] Peer disconnected:', role, '— resetting to home');
+      handleResetRef.current();
+    },
+    onTransferCancelled: () => {
+      console.log('[QuickTransfer] Transfer cancelled by peer — resetting to home');
+      handleResetRef.current();
     },
     onSessionEnded: () => {
-      handleReset();
+      console.log('[QuickTransfer] Session ended — resetting to home');
+      handleResetRef.current();
     },
     onCodeResolved: (token) => {
       console.log('[QuickTransfer] Code resolved to token:', token.slice(0, 8) + '...');
-      // Switch to mobile role so the new socket fires join-session with resolved token
       setSignalingRole('mobile');
       setJoinToken(token);
       setIsConnecting(true);
@@ -222,6 +222,19 @@ export function UnifiedApp() {
     }
   }, [sigState, screen, navigate]);
 
+  // ── Clean up session on browser unload / reload ──
+  useEffect(() => {
+    const handleUnload = () => {
+      handleResetRef.current();
+    };
+    window.addEventListener('beforeunload', handleUnload);
+    window.addEventListener('pagehide', handleUnload);
+    return () => {
+      window.removeEventListener('beforeunload', handleUnload);
+      window.removeEventListener('pagehide', handleUnload);
+    };
+  }, []);
+
   // ── Detect incoming file-start to update pending list ──
   useEffect(() => {
     if (userRole.current !== 'receiver') return;
@@ -269,7 +282,13 @@ export function UnifiedApp() {
   // ────────────────────────────────────────────────────────────────
 
   const handleReset = useCallback(() => {
-    endSession();
+    sessionGenerationRef.current++;
+    try {
+      sendTransferCancel();
+      endSession();
+    } catch {
+      // Ignore cleanup error on socket
+    }
     closePeer();
     clearAllFileState();
     setSignalingRole(null);
@@ -282,7 +301,11 @@ export function UnifiedApp() {
     setResetKey(k => k + 1);
     navigate('/', { replace: true });
     setScreen('home');
-  }, [endSession, closePeer, clearAllFileState, navigate]);
+  }, [endSession, sendTransferCancel, closePeer, clearAllFileState, navigate]);
+
+  useEffect(() => {
+    handleResetRef.current = handleReset;
+  }, [handleReset]);
 
   const handleSendClick = useCallback(() => {
     userRole.current = 'sender';

@@ -146,7 +146,9 @@ export function registerSocketHandlers(io: Server): void {
 
     socket.on('transfer-cancel', ({ token }: { token: string }) => {
       if (!validateSessionMembership(socket.id, token)) return;
-      socket.to(token).emit('transfer-cancel');
+      console.log(`[Socket] Transfer cancelled in session ${token.slice(0, 8)}...`);
+      io.to(token).emit('transfer-cancelled', { reason: 'user_cancelled' });
+      sessionManager.endSession(token);
     });
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -155,10 +157,8 @@ export function registerSocketHandlers(io: Server): void {
     socket.on('end-session', ({ token }: { token: string }) => {
       const session = sessionManager.getByToken(token);
       if (!session) return;
-      // Only the PC (creator) can formally end the session
-      if (session.pcSocketId !== socket.id) return;
 
-      io.to(token).emit('session-ended', { reason: 'Host ended the session.' });
+      io.to(token).emit('session-ended', { reason: 'Session ended.' });
       sessionManager.endSession(token);
       socket.leave(token);
     });
@@ -172,17 +172,10 @@ export function registerSocketHandlers(io: Server): void {
       const session = sessionManager.getSessionBySocketId(socket.id);
       if (!session) return;
 
-      if (session.pcSocketId === socket.id) {
-        // PC disconnected — notify mobile and end session
-        socket.to(session.token).emit('peer-disconnected', { role: 'pc' });
-        sessionManager.endSession(session.token);
-      } else if (session.mobileSocketId === socket.id) {
-        // Mobile disconnected — notify PC, reset to waiting
-        session.mobileSocketId = null;
-        session.status = 'waiting';
-        socket.to(session.token).emit('peer-disconnected', { role: 'mobile' });
-        console.log(`[Socket] Mobile disconnected; session ${session.token.slice(0, 8)}... reset to waiting`);
-      }
+      const role = session.pcSocketId === socket.id ? 'pc' : 'mobile';
+      io.to(session.token).emit('peer-disconnected', { role });
+      io.to(session.token).emit('session-ended', { reason: 'Peer disconnected.' });
+      sessionManager.endSession(session.token);
     });
 
     // ─────────────────────────────────────────────────────────────────────────

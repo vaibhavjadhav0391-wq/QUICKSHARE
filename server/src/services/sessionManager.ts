@@ -23,10 +23,10 @@ export interface Session {
 
 // Maximum session lifetime even with activity (30 minutes)
 const MAX_SESSION_AGE_MS = 30 * 60 * 1000;
-// Inactivity timeout (10 minutes of no activity)
-const INACTIVITY_TIMEOUT_MS = 10 * 60 * 1000;
+// Inactivity timeout (5 minutes of no activity)
+const INACTIVITY_TIMEOUT_MS = 5 * 60 * 1000;
 // How often to run the cleanup sweep
-const CLEANUP_INTERVAL_MS = 60 * 1000;
+const CLEANUP_INTERVAL_MS = 30 * 1000;
 
 class SessionManager {
   private sessions = new Map<string, Session>();

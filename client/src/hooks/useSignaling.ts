@@ -11,6 +11,7 @@ interface UseSignalingOptions {
   joinToken?: string;
   onPeerJoined?: () => void;
   onPeerDisconnected?: (role: 'pc' | 'mobile') => void;
+  onTransferCancelled?: () => void;
   onSessionEnded?: (reason: string) => void;
   onOffer?: (sdp: RTCSessionDescriptionInit) => void;
   onAnswer?: (sdp: RTCSessionDescriptionInit) => void;
@@ -27,6 +28,7 @@ interface UseSignalingReturn {
   sendAnswer: (sdp: RTCSessionDescriptionInit) => void;
   sendIceCandidate: (candidate: RTCIceCandidateInit) => void;
   endSession: () => void;
+  sendTransferCancel: () => void;
   sendFallbackChunk: (data: unknown) => void;
   joinByCode: (code: string) => void;
   markConnected: (via: 'webrtc' | 'ws') => void;
@@ -39,6 +41,7 @@ export function useSignaling(options: UseSignalingOptions): UseSignalingReturn {
     joinToken,
     onPeerJoined,
     onPeerDisconnected,
+    onTransferCancelled,
     onSessionEnded,
     onOffer,
     onAnswer,
@@ -59,6 +62,7 @@ export function useSignaling(options: UseSignalingOptions): UseSignalingReturn {
   const callbacksRef = useRef({
     onPeerJoined,
     onPeerDisconnected,
+    onTransferCancelled,
     onSessionEnded,
     onOffer,
     onAnswer,
@@ -71,6 +75,7 @@ export function useSignaling(options: UseSignalingOptions): UseSignalingReturn {
     callbacksRef.current = {
       onPeerJoined,
       onPeerDisconnected,
+      onTransferCancelled,
       onSessionEnded,
       onOffer,
       onAnswer,
@@ -78,7 +83,17 @@ export function useSignaling(options: UseSignalingOptions): UseSignalingReturn {
       onFallbackChunk,
       onCodeResolved,
     };
-  });
+  }, [
+    onPeerJoined,
+    onPeerDisconnected,
+    onTransferCancelled,
+    onSessionEnded,
+    onOffer,
+    onAnswer,
+    onIceCandidate,
+    onFallbackChunk,
+    onCodeResolved,
+  ]);
 
   const clearFallbackTimer = useCallback(() => {
     if (fallbackTimerRef.current) {
@@ -199,6 +214,20 @@ export function useSignaling(options: UseSignalingOptions): UseSignalingReturn {
       callbacksRef.current.onPeerDisconnected?.(peerRole);
     });
 
+    socket.on('transfer-cancelled', () => {
+      console.log('[Signaling] Received transfer-cancelled event');
+      clearFallbackTimer();
+      setState('disconnected');
+      callbacksRef.current.onTransferCancelled?.();
+    });
+
+    socket.on('transfer-cancel', () => {
+      console.log('[Signaling] Received transfer-cancel event');
+      clearFallbackTimer();
+      setState('disconnected');
+      callbacksRef.current.onTransferCancelled?.();
+    });
+
     socket.on('session-ended', ({ reason }: { reason: string }) => {
       console.log('[Signaling] Session ended:', reason);
       clearFallbackTimer();
@@ -243,6 +272,8 @@ export function useSignaling(options: UseSignalingOptions): UseSignalingReturn {
       socket.off('code-resolved');
       socket.off('peer-joined');
       socket.off('peer-disconnected');
+      socket.off('transfer-cancelled');
+      socket.off('transfer-cancel');
       socket.off('session-ended');
       socket.off('session-expired');
       socket.off('offer');
@@ -277,6 +308,12 @@ export function useSignaling(options: UseSignalingOptions): UseSignalingReturn {
     socketRef.current.emit('end-session', { token });
   }, [session, joinToken]);
 
+  const sendTransferCancel = useCallback(() => {
+    const token = session?.token || joinToken;
+    if (!token || !socketRef.current) return;
+    socketRef.current.emit('transfer-cancel', { token });
+  }, [session, joinToken]);
+
   const sendFallbackChunk = useCallback((data: unknown) => {
     const token = session?.token || joinToken;
     if (!token || !socketRef.current) return;
@@ -303,6 +340,7 @@ export function useSignaling(options: UseSignalingOptions): UseSignalingReturn {
     sendAnswer,
     sendIceCandidate,
     endSession,
+    sendTransferCancel,
     sendFallbackChunk,
     joinByCode,
     markConnected,

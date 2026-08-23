@@ -140,6 +140,7 @@ export interface SignalingEvents {
   'code-resolved': (data: { token: string }) => void;
   'peer-joined': (data: { peerId: string }) => void;
   'peer-disconnected': (data: { role: 'pc' | 'mobile' }) => void;
+  'transfer-cancelled': (data?: { reason: string }) => void;
   'session-ended': (data: { reason: string }) => void;
   'session-expired': () => void;
 }
