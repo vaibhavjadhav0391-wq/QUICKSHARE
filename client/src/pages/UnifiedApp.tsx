@@ -93,7 +93,7 @@ export function UnifiedApp() {
     onPeerDisconnected: () => {
       setPeerJoined(false);
       dataChannelRef.current = null;
-      setAccepted(false);
+      clearAllFileState();
       // Return to appropriate waiting state
       if (userRole.current === 'sender') {
         setScreen('send-waiting');
@@ -164,6 +164,14 @@ export function UnifiedApp() {
   const { transfers, sendFile, handleDataChannelMessage, cancelTransfer, clearTransfers } =
     useFileTransfer(dataChannelRef, sendFallbackChunk, isRelay);
 
+  // Helper to completely wipe all file and transfer state for a clean new transfer
+  const clearAllFileState = useCallback(() => {
+    setSelectedFiles([]);
+    setPendingReceiverFiles([]);
+    setAccepted(false);
+    clearTransfers();
+  }, [clearTransfers]);
+
   // ── When urlToken arrives (deep link), set up receiver mode ──
   // CRITICAL: do NOT navigate away from /join/:token until after joining succeeds.
   // We only store the joinToken in state; the URL stays as-is until connected.
@@ -172,6 +180,7 @@ export function UnifiedApp() {
       console.log('[QuickTransfer] Join URL detected:', urlToken.slice(0, 8) + '...');
       console.log('[QuickTransfer] Parsed session token:', urlToken);
       userRole.current = 'receiver';
+      clearAllFileState();
       setSignalingRole('mobile');
       setScreen('receive-connect');
       setIsConnecting(true);
@@ -181,7 +190,7 @@ export function UnifiedApp() {
       setJoinToken(prev => (prev !== urlToken ? urlToken : prev));
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [urlToken]);
+  }, [urlToken, clearAllFileState]);
 
   // ── Log when signaling emits join-session ──
   useEffect(() => {
@@ -250,13 +259,10 @@ export function UnifiedApp() {
   const handleReset = useCallback(() => {
     endSession();
     closePeer();
-    clearTransfers();
+    clearAllFileState();
     setSignalingRole(null);
     setJoinToken(undefined);
     setPeerJoined(false);
-    setSelectedFiles([]);
-    setPendingReceiverFiles([]);
-    setAccepted(false);
     setConnectError(null);
     setIsConnecting(false);
     userRole.current = 'sender';
@@ -264,25 +270,19 @@ export function UnifiedApp() {
     setResetKey(k => k + 1);
     navigate('/', { replace: true });
     setScreen('home');
-  }, [endSession, closePeer, clearTransfers, navigate]);
+  }, [endSession, closePeer, clearAllFileState, navigate]);
 
   const handleSendClick = useCallback(() => {
     userRole.current = 'sender';
-    setSelectedFiles([]);
-    clearTransfers();
-    setPendingReceiverFiles([]);
-    setAccepted(false);
+    clearAllFileState();
     setScreen('send-select');
-  }, [clearTransfers]);
+  }, [clearAllFileState]);
 
   const handleReceiveClick = useCallback(() => {
     userRole.current = 'receiver';
-    setSelectedFiles([]);
-    clearTransfers();
-    setPendingReceiverFiles([]);
-    setAccepted(false);
+    clearAllFileState();
     setScreen('receive-connect');
-  }, [clearTransfers]);
+  }, [clearAllFileState]);
 
   const handleAddFiles = useCallback((files: File[]) => {
     setSelectedFiles(prev => [...prev, ...files]);
@@ -305,6 +305,7 @@ export function UnifiedApp() {
    *   - (URL-based join is handled via urlToken → joinToken state)
    */
   const handleReceiverConnect = useCallback((codeOrToken: string) => {
+    clearAllFileState();
     setConnectError(null);
     setIsConnecting(true);
     const trimmed = codeOrToken.trim();
@@ -331,10 +332,12 @@ export function UnifiedApp() {
       setSignalingRole('mobile');
       setJoinToken(trimmed);
     }
-  }, [joinByCode]);
+  }, [joinByCode, clearAllFileState]);
 
   const handleSendFiles = useCallback(async () => {
     clearTransfers();
+    setPendingReceiverFiles([]);
+    setAccepted(false);
     setScreen('transferring');
     for (const file of selectedFiles) {
       await sendFile(file);

@@ -273,7 +273,19 @@ export function useFileTransfer(
             eta: -1,
             startedAt: Date.now(),
           };
-          setTransfers((prev) => [...prev, item]);
+
+          // If all previous transfers were finished (complete/cancelled/error),
+          // this file-start marks the start of a NEW transfer batch.
+          // Discard old transfer items so history is never retained across transfers.
+          setTransfers((prev) => {
+            const allFinished = prev.length > 0 && prev.every(
+              (t) => t.status === 'complete' || t.status === 'cancelled' || t.status === 'error'
+            );
+            if (allFinished) {
+              return [item];
+            }
+            return [...prev, item];
+          });
           console.log(`[FileTransfer] Receiving: ${msg.name} (${msg.size} bytes, ${msg.totalChunks} chunks)`);
           break;
         }
