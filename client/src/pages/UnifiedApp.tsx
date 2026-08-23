@@ -161,7 +161,7 @@ export function UnifiedApp() {
 
   // ── FILE TRANSFER ──
   const isRelay = sigState === 'ws-fallback';
-  const { transfers, sendFile, handleDataChannelMessage, cancelTransfer } =
+  const { transfers, sendFile, handleDataChannelMessage, cancelTransfer, clearTransfers } =
     useFileTransfer(dataChannelRef, sendFallbackChunk, isRelay);
 
   // ── When urlToken arrives (deep link), set up receiver mode ──
@@ -250,6 +250,7 @@ export function UnifiedApp() {
   const handleReset = useCallback(() => {
     endSession();
     closePeer();
+    clearTransfers();
     setSignalingRole(null);
     setJoinToken(undefined);
     setPeerJoined(false);
@@ -263,17 +264,25 @@ export function UnifiedApp() {
     setResetKey(k => k + 1);
     navigate('/', { replace: true });
     setScreen('home');
-  }, [endSession, closePeer, navigate]);
+  }, [endSession, closePeer, clearTransfers, navigate]);
 
   const handleSendClick = useCallback(() => {
     userRole.current = 'sender';
+    setSelectedFiles([]);
+    clearTransfers();
+    setPendingReceiverFiles([]);
+    setAccepted(false);
     setScreen('send-select');
-  }, []);
+  }, [clearTransfers]);
 
   const handleReceiveClick = useCallback(() => {
     userRole.current = 'receiver';
+    setSelectedFiles([]);
+    clearTransfers();
+    setPendingReceiverFiles([]);
+    setAccepted(false);
     setScreen('receive-connect');
-  }, []);
+  }, [clearTransfers]);
 
   const handleAddFiles = useCallback((files: File[]) => {
     setSelectedFiles(prev => [...prev, ...files]);
@@ -325,11 +334,12 @@ export function UnifiedApp() {
   }, [joinByCode]);
 
   const handleSendFiles = useCallback(async () => {
+    clearTransfers();
     setScreen('transferring');
     for (const file of selectedFiles) {
       await sendFile(file);
     }
-  }, [selectedFiles, sendFile]);
+  }, [selectedFiles, sendFile, clearTransfers]);
 
   const handleAcceptFiles = useCallback(() => {
     setAccepted(true);

@@ -38,14 +38,14 @@ export function QRScanner({ onResult, onClose }: QRScannerProps) {
       </div>
 
       {/* Camera viewport */}
-      <div className="flex-1 relative overflow-hidden bg-black flex items-center justify-center">
+      <div className="flex-1 relative overflow-hidden bg-black flex items-center justify-center p-4">
         {/* Hidden canvas for QR analysis */}
         <canvas ref={canvasRef} className="hidden" aria-hidden />
 
-        {/* Video Element — Always rendered so ref is never null */}
+        {/* Video Element — Preserves natural camera aspect ratio (never stretched) */}
         <video
           ref={videoRef}
-          className={`absolute inset-0 w-full h-full object-cover transition-opacity duration-300 ${
+          className={`max-w-full max-h-full w-auto h-auto object-contain rounded-2xl transition-opacity duration-300 ${
             state === 'scanning' ? 'opacity-100' : 'opacity-0'
           }`}
           muted
@@ -64,16 +64,18 @@ export function QRScanner({ onResult, onClose }: QRScannerProps) {
 
         {state === 'scanning' && (
           <>
-            {/* Overlay Frame with Corner Brackets & Animated Line */}
-            <div className="scanner-overlay z-10">
-              <div className="scanner-corner tl" />
-              <div className="scanner-corner tr" />
-              <div className="scanner-corner bl" />
-              <div className="scanner-corner br" />
-              <div className="scanner-line" />
+            {/* Centered Reticle Target Frame */}
+            <div className="absolute inset-0 z-10 pointer-events-none flex items-center justify-center p-6">
+              <div className="relative w-64 h-64 sm:w-72 sm:h-72 rounded-3xl border-2 border-blue-400/50 bg-blue-500/5 backdrop-blur-[1px] shadow-[0_0_50px_rgba(40,164,248,0.15)]">
+                <div className="scanner-corner tl" />
+                <div className="scanner-corner tr" />
+                <div className="scanner-corner bl" />
+                <div className="scanner-corner br" />
+                <div className="scanner-line" />
+              </div>
             </div>
 
-            <p className="absolute bottom-24 left-0 right-0 text-center text-white/80 text-sm font-medium z-20 drop-shadow-md">
+            <p className="absolute bottom-12 left-0 right-0 text-center text-white/80 text-sm font-medium z-20 drop-shadow-md">
               Align QR code within the frame
             </p>
           </>

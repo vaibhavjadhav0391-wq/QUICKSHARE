@@ -17,6 +17,8 @@ interface UseFileTransferReturn {
   /** Called when a DataChannel message arrives (JSON or ArrayBuffer) */
   handleDataChannelMessage: (event: MessageEvent) => void;
   cancelTransfer: (transferId: string) => void;
+  /** Clear all transfer state and accumulators */
+  clearTransfers: () => void;
 }
 
 /**
@@ -330,7 +332,15 @@ export function useFileTransfer(
     // If it's a send, the loop will pick up the flag on next iteration
   }, []);
 
-  return { transfers, sendFile, handleDataChannelMessage, cancelTransfer };
+  const clearTransfers = useCallback(() => {
+    setTransfers([]);
+    accumulators.current.clear();
+    cancelFlags.current.clear();
+    pendingChunkIndex.current = -1;
+    pendingTransferId.current = null;
+  }, []);
+
+  return { transfers, sendFile, handleDataChannelMessage, cancelTransfer, clearTransfers };
 }
 
 // Uses crypto.randomUUID() for zero-dependency UUID generation

@@ -197,28 +197,29 @@
   position: absolute;
   width: 24px;
   height: 24px;
-  border-color: #28a4f8;
+  border-color: #38bdf8;
   border-style: solid;
 }
 
-.scanner-corner.tl { top: 20%; left: 20%; border-width: 3px 0 0 3px; }
-.scanner-corner.tr { top: 20%; right: 20%; border-width: 3px 3px 0 0; }
-.scanner-corner.bl { bottom: 20%; left: 20%; border-width: 0 0 3px 3px; }
-.scanner-corner.br { bottom: 20%; right: 20%; border-width: 0 3px 3px 0; }
+.scanner-corner.tl { top: -2px; left: -2px; border-width: 4px 0 0 4px; border-top-left-radius: 1.25rem; }
+.scanner-corner.tr { top: -2px; right: -2px; border-width: 4px 4px 0 0; border-top-right-radius: 1.25rem; }
+.scanner-corner.bl { bottom: -2px; left: -2px; border-width: 0 0 4px 4px; border-bottom-left-radius: 1.25rem; }
+.scanner-corner.br { bottom: -2px; right: -2px; border-width: 0 4px 4px 0; border-bottom-right-radius: 1.25rem; }
 
 .scanner-line {
   position: absolute;
-  left: 20%;
-  right: 20%;
+  left: 8%;
+  right: 8%;
   height: 2px;
-  background: linear-gradient(90deg, transparent, #28a4f8, transparent);
+  background: linear-gradient(90deg, transparent, #38bdf8, transparent);
+  box-shadow: 0 0 12px #38bdf8;
   animation: scanLine 2s ease-in-out infinite;
 }
 
 @keyframes scanLine {
-  0% { top: 20%; }
-  50% { top: 79%; }
-  100% { top: 20%; }
+  0% { top: 10%; }
+  50% { top: 88%; }
+  100% { top: 10%; }
 }
 
 /* ──────────────────────────────────────────────────────────────────────────────

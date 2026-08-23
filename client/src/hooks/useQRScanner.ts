@@ -18,9 +18,8 @@ interface UseQRScannerReturn {
 const ANALYSIS_WIDTH = 640;
 const ANALYSIS_HEIGHT = 480;
 
-// How many milliseconds between QR decode attempts.
-// ~10fps analysis is plenty — jsQR is the bottleneck, not the camera.
-const SCAN_INTERVAL_MS = 100;
+// How many milliseconds between QR decode attempts (40ms = ~25fps fast scanning).
+const SCAN_INTERVAL_MS = 40;
 
 export function useQRScanner(onResult: (text: string) => void): UseQRScannerReturn {
   const [state, setState] = useState<ScannerState>('idle');
@@ -31,7 +30,7 @@ export function useQRScanner(onResult: (text: string) => void): UseQRScannerRetu
   const streamRef = useRef<MediaStream | null>(null);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const activeRef = useRef(false);
-  const hasScannedRef = useRef(false);
+  const hasScannedFlag = useRef(false);
 
   // Keep latest onResult in a ref so the interval closure never goes stale
   const onResultRef = useRef(onResult);
@@ -62,7 +61,7 @@ export function useQRScanner(onResult: (text: string) => void): UseQRScannerRetu
   // even on low-power devices. Uses a fixed-size off-screen canvas so jsQR
   // always works on the same resolution regardless of camera resolution.
   const decodeTick = useCallback(() => {
-    if (!activeRef.current || hasScannedRef.current) return;
+    if (!activeRef.current || hasScannedFlag.current) return;
 
     const video = videoRef.current;
     const canvas = canvasRef.current;
@@ -90,8 +89,8 @@ export function useQRScanner(onResult: (text: string) => void): UseQRScannerRetu
     });
 
     if (code && code.data) {
-      if (hasScannedRef.current) return; // guard against double-fire
-      hasScannedRef.current = true;
+      if (hasScannedFlag.current) return; // guard against double-fire
+      hasScannedFlag.current = true;
 
       console.log('[QR] QR detected:', code.data);
 
@@ -104,14 +103,14 @@ export function useQRScanner(onResult: (text: string) => void): UseQRScannerRetu
       stopStream();
       setState('success');
 
-      // Fire result after a short delay so success UI renders first
-      setTimeout(() => onResultRef.current(code.data), 300);
+      // Immediately pass decoded result to join logic without delay
+      onResultRef.current(code.data);
     }
   }, [stopStream]);
 
   const startScanning = useCallback((stream: MediaStream) => {
     streamRef.current = stream;
-    hasScannedRef.current = false;
+    hasScannedFlag.current = false;
     activeRef.current = true;
 
     const video = videoRef.current;
