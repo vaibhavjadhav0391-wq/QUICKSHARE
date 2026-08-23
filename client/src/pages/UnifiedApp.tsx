@@ -220,25 +220,29 @@ export function UnifiedApp() {
   useEffect(() => {
     if (userRole.current !== 'receiver') return;
     const incoming = transfers.filter(t => t.direction === 'receive');
-    if (incoming.length > 0 && !accepted) {
+    if (incoming.length > 0) {
       setPendingReceiverFiles(incoming);
     }
-  }, [transfers, accepted]);
+  }, [transfers]);
 
-  // ── Auto-progress to transferring screen once accepted or sending ──
+  // ── Auto-progress screen state based on transfers (Receiving/Sending & Completion) ──
   useEffect(() => {
-    if (transfers.some(t => t.status === 'transferring') && screen !== 'transferring') {
+    if (transfers.length === 0) return;
+
+    const hasTransferring = transfers.some(t => t.status === 'transferring');
+    const allFinished = transfers.every(
+      t => t.status === 'complete' || t.status === 'cancelled' || t.status === 'error'
+    );
+
+    // 1. Any file is currently transferring -> transition to transferring screen
+    if (hasTransferring && screen !== 'transferring' && screen !== 'complete') {
       setScreen('transferring');
+      if (userRole.current === 'receiver') {
+        setAccepted(true);
+      }
     }
-  }, [transfers, screen]);
-
-  // ── Auto-progress to complete screen ──
-  useEffect(() => {
-    if (
-      screen === 'transferring' &&
-      transfers.length > 0 &&
-      transfers.every(t => t.status === 'complete' || t.status === 'cancelled' || t.status === 'error')
-    ) {
+    // 2. All files in current transfer are finished -> transition to complete screen immediately
+    else if (allFinished && (screen === 'transferring' || screen === 'connected-receiver' || screen === 'receive-connect' || screen === 'connected-sender')) {
       setScreen('complete');
     }
   }, [transfers, screen]);

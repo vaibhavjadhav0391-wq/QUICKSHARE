@@ -205,8 +205,10 @@ export function useFileTransfer(
   const handleDataChannelMessage = useCallback((event: MessageEvent) => {
     const { data } = event;
 
-    // ArrayBuffer = file chunk data
-    if (data instanceof ArrayBuffer) {
+    const chunkBuffer = toArrayBuffer(data);
+
+    // Binary file chunk data (ArrayBuffer / Uint8Array / Buffer / Socket.IO payload)
+    if (chunkBuffer) {
       const tid = pendingTransferId.current;
       const idx = pendingChunkIndex.current;
       if (tid === null || idx === -1) return;
@@ -214,7 +216,7 @@ export function useFileTransfer(
       const acc = accumulators.current.get(tid);
       if (!acc) return;
 
-      const progress = acc.addChunk(idx, data);
+      const progress = acc.addChunk(idx, chunkBuffer);
       const info = acc.getInfo();
 
       // Speed tracking
@@ -366,4 +368,31 @@ function uuidv4(): string {
     const v = c === 'x' ? r : (r & 0x3) | 0x8;
     return v.toString(16);
   });
+}
+
+/** Converts any binary format (ArrayBuffer, Uint8Array, Buffer, Socket.IO Buffer) to ArrayBuffer */
+function toArrayBuffer(data: unknown): ArrayBuffer | null {
+  if (data instanceof ArrayBuffer) {
+    return data;
+  }
+  if (ArrayBuffer.isView(data)) {
+    const v = data as ArrayBufferView;
+    const buf = new Uint8Array(v.buffer, v.byteOffset, v.byteLength);
+    return buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) as ArrayBuffer;
+  }
+  if (data && typeof data === 'object') {
+    const obj = data as Record<string, unknown>;
+    // Socket.IO Buffer fallback: { type: 'Buffer', data: number[] }
+    if (obj.type === 'Buffer' && Array.isArray(obj.data)) {
+      return new Uint8Array(obj.data as number[]).buffer as ArrayBuffer;
+    }
+    // Object wrapping buffer property
+    if (obj.buffer instanceof ArrayBuffer) {
+      const b = obj.buffer as ArrayBuffer;
+      const offset = (obj.byteOffset as number) || 0;
+      const length = (obj.byteLength as number) || b.byteLength;
+      return b.slice(offset, offset + length);
+    }
+  }
+  return null;
 }
