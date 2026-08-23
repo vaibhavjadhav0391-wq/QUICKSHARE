@@ -39,7 +39,7 @@ export function useQRScanner(onResult: (text: string) => void): UseQRScannerRetu
 
   const stopStream = useCallback(() => {
     if (streamRef.current) {
-      console.log('[QR DEBUG] stopping camera');
+      console.log('[QR] stopping camera');
       streamRef.current.getTracks().forEach(t => t.stop());
       streamRef.current = null;
     }
@@ -93,9 +93,7 @@ export function useQRScanner(onResult: (text: string) => void): UseQRScannerRetu
       if (hasScannedRef.current) return; // guard against double-fire
       hasScannedRef.current = true;
 
-      console.log('[QR DEBUG] QR detected');
-      console.log('[QR DEBUG] decoded:', code.data);
-      console.log('[QR DEBUG] joining session');
+      console.log('[QR] QR detected:', code.data);
 
       // Stop scanning immediately
       activeRef.current = false;
@@ -122,21 +120,24 @@ export function useQRScanner(onResult: (text: string) => void): UseQRScannerRetu
       video.setAttribute('playsinline', 'true');
       video.muted = true;
 
-      const onPlaying = () => {
-        console.log('[QR DEBUG] Camera started');
-        console.log('[QR DEBUG] Scanner initialized');
-        console.log('[QR DEBUG] Scanning...');
+      let scanStarted = false;
+      const beginScanning = () => {
+        if (scanStarted) return;
+        scanStarted = true;
+        console.log('[QR] Scanner started');
         setState('scanning');
-
-        // Start interval-based decode loop
         if (intervalRef.current !== null) clearInterval(intervalRef.current);
         intervalRef.current = setInterval(decodeTick, SCAN_INTERVAL_MS);
       };
 
-      video.addEventListener('playing', onPlaying, { once: true });
+      // Register listeners BEFORE play() — some browsers fire 'playing'
+      // synchronously, and we'd miss it if we added the listener after.
+      video.addEventListener('playing', beginScanning, { once: true });
+      video.addEventListener('canplay', beginScanning, { once: true });
+      video.addEventListener('loadeddata', beginScanning, { once: true });
+
       video.play().catch(err => {
-        console.warn('[QR DEBUG] video.play() error:', err);
-        // Some browsers auto-block play() — try again on user interaction
+        console.warn('[QR] video.play() error:', err);
       });
     }
   }, [decodeTick]);
@@ -146,7 +147,7 @@ export function useQRScanner(onResult: (text: string) => void): UseQRScannerRetu
 
     setError(null);
     setState('requesting');
-    console.log('[QR DEBUG] Camera starting...');
+    console.log('[QR] Camera starting...');
 
     if (!navigator.mediaDevices?.getUserMedia) {
       setError('Camera not supported in this browser. Use Chrome or Safari.');
