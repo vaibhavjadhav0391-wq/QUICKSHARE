@@ -12,6 +12,16 @@ interface UseQRScannerReturn {
   error: string | null;
 }
 
+// Analysis resolution — large enough for jsQR to find the QR, small enough to be fast.
+// Downscaling a 1080p/4K camera frame to this before running jsQR dramatically
+// reduces CPU usage while keeping accuracy.
+const ANALYSIS_WIDTH = 640;
+const ANALYSIS_HEIGHT = 480;
+
+// How many milliseconds between QR decode attempts.
+// ~10fps analysis is plenty — jsQR is the bottleneck, not the camera.
+const SCAN_INTERVAL_MS = 100;
+
 export function useQRScanner(onResult: (text: string) => void): UseQRScannerReturn {
   const [state, setState] = useState<ScannerState>('idle');
   const [error, setError] = useState<string | null>(null);
@@ -19,79 +29,135 @@ export function useQRScanner(onResult: (text: string) => void): UseQRScannerRetu
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
-  const rafRef = useRef<number | null>(null);
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const activeRef = useRef(false);
+  const hasScannedRef = useRef(false);
 
-  const stop = useCallback(() => {
-    activeRef.current = false;
-    if (rafRef.current) {
-      cancelAnimationFrame(rafRef.current);
-      rafRef.current = null;
-    }
+  // Keep latest onResult in a ref so the interval closure never goes stale
+  const onResultRef = useRef(onResult);
+  useEffect(() => { onResultRef.current = onResult; });
+
+  const stopStream = useCallback(() => {
     if (streamRef.current) {
-      streamRef.current.getTracks().forEach((t) => t.stop());
+      console.log('[QR DEBUG] stopping camera');
+      streamRef.current.getTracks().forEach(t => t.stop());
       streamRef.current = null;
     }
     if (videoRef.current) {
       videoRef.current.srcObject = null;
     }
-    setState('idle');
   }, []);
 
-  const scan = useCallback(() => {
+  const stop = useCallback(() => {
+    activeRef.current = false;
+    if (intervalRef.current !== null) {
+      clearInterval(intervalRef.current);
+      intervalRef.current = null;
+    }
+    stopStream();
+    setState('idle');
+  }, [stopStream]);
+
+  // Core decode tick — runs on a fixed interval (not rAF) so it stays responsive
+  // even on low-power devices. Uses a fixed-size off-screen canvas so jsQR
+  // always works on the same resolution regardless of camera resolution.
+  const decodeTick = useCallback(() => {
+    if (!activeRef.current || hasScannedRef.current) return;
+
     const video = videoRef.current;
     const canvas = canvasRef.current;
-    if (!video || !canvas || !activeRef.current) return;
+    if (!video || !canvas) return;
 
-    if (video.readyState === video.HAVE_ENOUGH_DATA) {
-      const ctx = canvas.getContext('2d', { willReadFrequently: true });
-      if (ctx) {
-        canvas.width = video.videoWidth;
-        canvas.height = video.videoHeight;
-        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    // Only process if video has real pixel data
+    if (video.readyState < video.HAVE_CURRENT_DATA || video.videoWidth === 0) return;
 
-        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-        const code = jsQR(imageData.data, imageData.width, imageData.height, {
-          inversionAttempts: 'dontInvert',
-        });
+    // Draw to fixed analysis size (not video native size) for jsQR performance
+    const W = ANALYSIS_WIDTH;
+    const H = ANALYSIS_HEIGHT;
+    canvas.width = W;
+    canvas.height = H;
 
-        if (code && code.data) {
-          console.log('[QRScanner] Detected QR:', code.data);
-          stop();
-          setState('success');
-          onResult(code.data);
-          return;
-        }
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    if (!ctx) return;
+
+    ctx.drawImage(video, 0, 0, W, H);
+    const imageData = ctx.getImageData(0, 0, W, H);
+
+    // attemptBoth: tries both normal and inverted — handles dark-on-light AND
+    // light-on-dark QR codes (screen glare can invert perceived contrast).
+    const code = jsQR(imageData.data, W, H, {
+      inversionAttempts: 'attemptBoth',
+    });
+
+    if (code && code.data) {
+      if (hasScannedRef.current) return; // guard against double-fire
+      hasScannedRef.current = true;
+
+      console.log('[QR DEBUG] QR detected');
+      console.log('[QR DEBUG] decoded:', code.data);
+      console.log('[QR DEBUG] joining session');
+
+      // Stop scanning immediately
+      activeRef.current = false;
+      if (intervalRef.current !== null) {
+        clearInterval(intervalRef.current);
+        intervalRef.current = null;
       }
-    }
+      stopStream();
+      setState('success');
 
-    if (activeRef.current) {
-      rafRef.current = requestAnimationFrame(scan);
+      // Fire result after a short delay so success UI renders first
+      setTimeout(() => onResultRef.current(code.data), 300);
     }
-  }, [stop, onResult]);
+  }, [stopStream]);
 
-  const attachStreamToVideo = useCallback((stream: MediaStream) => {
-    if (videoRef.current) {
-      videoRef.current.srcObject = stream;
-      videoRef.current.setAttribute('playsinline', 'true');
-      videoRef.current.play().catch((err) => {
-        console.warn('[QRScanner] Play error:', err);
+  const startScanning = useCallback((stream: MediaStream) => {
+    streamRef.current = stream;
+    hasScannedRef.current = false;
+    activeRef.current = true;
+
+    const video = videoRef.current;
+    if (video) {
+      video.srcObject = stream;
+      video.setAttribute('playsinline', 'true');
+      video.muted = true;
+
+      const onPlaying = () => {
+        console.log('[QR DEBUG] Camera started');
+        console.log('[QR DEBUG] Scanner initialized');
+        console.log('[QR DEBUG] Scanning...');
+        setState('scanning');
+
+        // Start interval-based decode loop
+        if (intervalRef.current !== null) clearInterval(intervalRef.current);
+        intervalRef.current = setInterval(decodeTick, SCAN_INTERVAL_MS);
+      };
+
+      video.addEventListener('playing', onPlaying, { once: true });
+      video.play().catch(err => {
+        console.warn('[QR DEBUG] video.play() error:', err);
+        // Some browsers auto-block play() — try again on user interaction
       });
     }
-  }, []);
+  }, [decodeTick]);
 
   const start = useCallback(async () => {
+    if (activeRef.current) return; // already running
+
     setError(null);
     setState('requesting');
+    console.log('[QR DEBUG] Camera starting...');
 
     if (!navigator.mediaDevices?.getUserMedia) {
-      setError('Camera not available in this browser. Please use Chrome, Firefox, or Safari.');
+      setError('Camera not supported in this browser. Use Chrome or Safari.');
       setState('error');
       return;
     }
 
     try {
       let stream: MediaStream;
+
+      // First try: rear camera (environment) at 720p
       try {
         stream = await navigator.mediaDevices.getUserMedia({
           video: {
@@ -101,51 +167,44 @@ export function useQRScanner(onResult: (text: string) => void): UseQRScannerRetu
           },
         });
       } catch {
-        // Fallback for laptop webcams or strict devices
-        stream = await navigator.mediaDevices.getUserMedia({
-          video: true,
-        });
+        // Fallback: any camera (handles laptops, desktops, strict devices)
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({ video: true });
+        } catch (fallbackErr) {
+          throw fallbackErr;
+        }
       }
 
-      streamRef.current = stream;
-      activeRef.current = true;
-      setState('scanning');
-
-      // Attach stream on next tick to ensure <video> element is rendered in DOM
-      setTimeout(() => {
-        attachStreamToVideo(stream);
-        rafRef.current = requestAnimationFrame(scan);
-      }, 50);
+      startScanning(stream);
 
     } catch (err) {
       const e = err as DOMException;
       if (e.name === 'NotAllowedError' || e.name === 'PermissionDeniedError') {
-        setError('Camera permission denied. Please allow camera access in browser settings.');
+        setError('Camera permission denied. Please allow camera access in your browser settings.');
         setState('denied');
       } else if (e.name === 'NotFoundError') {
         setError('No camera found on this device.');
         setState('error');
       } else {
-        setError(`Camera error: ${e.message}`);
+        setError(`Camera error: ${e.message || e.name}`);
         setState('error');
       }
     }
-  }, [scan, attachStreamToVideo]);
+  }, [startScanning]);
 
-  // Auto-start camera when scanner mounts
+  // Auto-start when hook mounts, cleanup on unmount
   useEffect(() => {
     start();
     return () => {
-      stop();
+      activeRef.current = false;
+      if (intervalRef.current !== null) {
+        clearInterval(intervalRef.current);
+        intervalRef.current = null;
+      }
+      stopStream();
     };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  // Ensure video element receives stream when mounted
-  useEffect(() => {
-    if (state === 'scanning' && streamRef.current) {
-      attachStreamToVideo(streamRef.current);
-    }
-  }, [state, attachStreamToVideo]);
 
   return { state, videoRef, canvasRef, start, stop, error };
 }
