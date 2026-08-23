@@ -235,20 +235,22 @@ export function UnifiedApp() {
   useEffect(() => {
     if (transfers.length === 0) return;
 
-    const hasTransferring = transfers.some(t => t.status === 'transferring');
+    const hasActive = transfers.some(t => t.status === 'transferring' || t.status === 'verifying');
     const allFinished = transfers.every(
       t => t.status === 'complete' || t.status === 'cancelled' || t.status === 'error'
     );
 
-    // 1. Any file is currently transferring -> transition to transferring screen
-    if (hasTransferring && screen !== 'transferring' && screen !== 'complete') {
+    // 1. Any file is currently active (transferring or verifying) -> transition to transferring screen immediately
+    if (hasActive && screen !== 'transferring' && screen !== 'complete') {
+      console.log('[TRANSFER] Active transfer detected — leaving waiting screen to transferring');
       setScreen('transferring');
       if (userRole.current === 'receiver') {
         setAccepted(true);
       }
     }
-    // 2. All files in current transfer are finished -> transition to complete screen immediately
+    // 2. All files in current transfer are finished on both sides -> transition to complete screen
     else if (allFinished && (screen === 'transferring' || screen === 'connected-receiver' || screen === 'receive-connect' || screen === 'connected-sender')) {
+      console.log('[TRANSFER] All files complete — transitioning to complete screen');
       setScreen('complete');
     }
   }, [transfers, screen]);

@@ -8,7 +8,7 @@ interface TransferringScreenProps {
 }
 
 export function TransferringScreen({ transfers, role, isRelay }: TransferringScreenProps) {
-  const active = transfers.filter(t => t.status === 'transferring');
+  const active = transfers.filter(t => t.status === 'transferring' || t.status === 'verifying');
   const complete = transfers.filter(t => t.status === 'complete');
   const total = transfers.length;
   const overallProgress = total > 0
@@ -71,7 +71,8 @@ export function TransferringScreen({ transfers, role, isRelay }: TransferringScr
 
 function FileProgressCard({ transfer: t }: { transfer: FileTransferItem }) {
   const isComplete = t.status === 'complete';
-  const isActive = t.status === 'transferring';
+  const isVerifying = t.status === 'verifying';
+  const isActive = t.status === 'transferring' || isVerifying;
   const isCancelled = t.status === 'cancelled' || t.status === 'error';
 
   return (
@@ -84,7 +85,7 @@ function FileProgressCard({ transfer: t }: { transfer: FileTransferItem }) {
             <p className="text-white/85 text-sm font-medium truncate">{truncateFilename(t.name, 35)}</p>
             <span className={`text-xs font-semibold flex-shrink-0
               ${isComplete ? 'text-emerald-400' : isCancelled ? 'text-red-400' : 'text-amber-400'}`}>
-              {isComplete ? '✓ Done' : isCancelled ? '✗ Failed' : isActive ? `${t.progress}%` : 'Waiting…'}
+              {isComplete ? '✓ Done' : isCancelled ? '✗ Failed' : isVerifying ? 'Verifying…' : `${t.progress}%`}
             </span>
           </div>
           <p className="text-white/30 text-xs">{formatBytes(t.size)}</p>

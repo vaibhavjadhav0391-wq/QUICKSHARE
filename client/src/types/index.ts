@@ -27,6 +27,7 @@ export type TransferDirection = 'send' | 'receive';
 export type TransferStatus =
   | 'queued'
   | 'transferring'
+  | 'verifying'    // sender waiting for receiver ACK
   | 'paused'
   | 'complete'
   | 'error'
@@ -34,6 +35,7 @@ export type TransferStatus =
 
 export interface FileTransferItem {
   id: string;
+  fileId?: string;
   name: string;
   size: number;
   mimeType: string;
@@ -62,6 +64,7 @@ export interface FileTransferItem {
 export interface DCMessageFileStart {
   type: 'file-start';
   transferId: string;
+  fileId?: string;
   name: string;
   size: number;
   mimeType: string;
@@ -77,6 +80,7 @@ export interface DCMessageChunkMeta {
 export interface DCMessageFileEnd {
   type: 'file-end';
   transferId: string;
+  fileId?: string;
 }
 
 export interface DCMessageCancel {
@@ -89,12 +93,29 @@ export interface DCMessageAck {
   transferId: string;
 }
 
+export interface DCMessageFileReceived {
+  type: 'file-received';
+  transferId: string;
+  fileId?: string;
+  receivedBytes: number;
+  success: boolean;
+}
+
+export interface DCMessageFileError {
+  type: 'file-error';
+  transferId: string;
+  fileId?: string;
+  reason: string;
+}
+
 export type DCMessage =
   | DCMessageFileStart
   | DCMessageChunkMeta
   | DCMessageFileEnd
   | DCMessageCancel
-  | DCMessageAck;
+  | DCMessageAck
+  | DCMessageFileReceived
+  | DCMessageFileError;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // WEBSOCKET SIGNALING

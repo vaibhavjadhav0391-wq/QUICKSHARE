@@ -13,9 +13,9 @@ const LOW_WATERMARK_BYTES = 64 * 1024;
 
 interface UseFileTransferReturn {
   transfers: FileTransferItem[];
-  /** Send a file via the DataChannel */
+  /** Send a file via the DataChannel or WS Fallback */
   sendFile: (file: File) => Promise<void>;
-  /** Called when a DataChannel message arrives (JSON or ArrayBuffer) */
+  /** Called when a DataChannel or WS message arrives (JSON or ArrayBuffer) */
   handleDataChannelMessage: (event: MessageEvent) => void;
   cancelTransfer: (transferId: string) => void;
   /** Clear all transfer state and accumulators */
@@ -23,8 +23,8 @@ interface UseFileTransferReturn {
 }
 
 /**
- * useFileTransfer — handles the complete file send/receive lifecycle over
- * a WebRTC DataChannel or WebSocket Fallback Relay.
+ * useFileTransfer — manages robust file chunking, streaming, receiver validation,
+ * and sender ACK completion.
  */
 export function useFileTransfer(
   dataChannelRef: React.RefObject<RTCDataChannel | null>,
@@ -57,7 +57,13 @@ export function useFileTransfer(
       return;
     }
     const ch = dataChannelRef.current;
-    if (!ch || ch.readyState !== 'open') return;
+    if (!ch || ch.readyState !== 'open') {
+      // Fall back to signaling if data channel is closed
+      if (sendFallbackChunk) {
+        sendFallbackChunk(msg);
+      }
+      return;
+    }
     ch.send(JSON.stringify(msg));
   }
 
@@ -103,18 +109,20 @@ export function useFileTransfer(
     const ch = dataChannelRef.current;
     if (!useFallback) {
       if (!ch || ch.readyState !== 'open') {
-        console.error(`[FileTransfer Diagnostic] DataChannel not open (state: ${ch?.readyState || 'null'})`);
+        console.error(`[TRANSFER] Cannot send file: DataChannel not open (state: ${ch?.readyState || 'null'})`);
         return;
       }
     }
 
     const transferId = uuidv4();
+    const fileId = uuidv4();
     const totalChunks = totalChunksFor(file.size);
 
-    console.log(`[FileTransfer Diagnostic] Starting file send: ${file.name} (${file.size} bytes, ${totalChunks} chunks), mode=${useFallback ? 'WebSocket Relay' : 'WebRTC DataChannel'}`);
+    console.log(`[TRANSFER] sender file-start: ${file.name} (${file.size} bytes, ${totalChunks} chunks), mode=${useFallback ? 'WebSocket Relay' : 'WebRTC DataChannel'}`);
 
     const item: FileTransferItem = {
       id: transferId,
+      fileId,
       name: file.name,
       size: file.size,
       mimeType: file.type || 'application/octet-stream',
@@ -129,10 +137,11 @@ export function useFileTransfer(
 
     setTransfers((prev) => [...prev, item]);
 
-    // Announce file metadata
+    // Announce file metadata to receiver
     sendJSON({
       type: 'file-start',
       transferId,
+      fileId,
       name: file.name,
       size: file.size,
       mimeType: file.type || 'application/octet-stream',
@@ -164,14 +173,14 @@ export function useFileTransfer(
 
       // Send chunk metadata
       sendJSON({ type: 'chunk-meta', transferId, chunkIndex });
-      
+
       // Send raw binary chunk
       if (useFallback && sendFallbackChunk) {
         sendFallbackChunk(chunk);
       } else if (ch && ch.readyState === 'open') {
         ch.send(chunk);
       } else {
-        console.warn(`[FileTransfer Diagnostic] Aborting chunk ${chunkIndex} - DataChannel closed unexpectedly`);
+        console.warn(`[TRANSFER] Aborting chunk ${chunkIndex} - DataChannel closed unexpectedly`);
         updateTransfer(transferId, { status: 'error', error: 'DataChannel disconnected during transfer.' });
         return;
       }
@@ -179,7 +188,7 @@ export function useFileTransfer(
       bytesSent += chunk.byteLength;
       chunkIndex++;
 
-      // Update progress every ~250ms (not every chunk)
+      // Update progress every ~250ms
       const now = Date.now();
       const elapsed = (now - lastSpeedCheck) / 1000;
       if (elapsed >= 0.25 || chunkIndex === totalChunks) {
@@ -189,7 +198,7 @@ export function useFileTransfer(
         const eta = speed > 0 ? remaining / speed : -1;
 
         updateTransfer(transferId, {
-          progress: Math.round((bytesSent / file.size) * 100),
+          progress: Math.min(99, Math.round((bytesSent / file.size) * 100)),
           transferred: bytesSent,
           speed,
           eta,
@@ -200,21 +209,43 @@ export function useFileTransfer(
       }
     }
 
-    // Signal end of file
-    sendJSON({ type: 'file-end', transferId });
+    // Signal end of file transmission to receiver
+    console.log(`[TRANSFER] sender file-end: sent all ${totalChunks} chunks for ${file.name}. Waiting for receiver ACK...`);
+    sendJSON({ type: 'file-end', transferId, fileId });
+
+    // Move sender to 'verifying' state — WAITING for receiver acknowledgement!
     updateTransfer(transferId, {
-      status: 'complete',
-      progress: 100,
+      status: 'verifying',
+      progress: 99,
       transferred: file.size,
       speed: 0,
-      eta: 0,
-      completedAt: Date.now(),
+      eta: -1,
     });
-    console.log(`[FileTransfer] Sent: ${file.name} (${file.size} bytes)`);
+
+    // Safety timeout: if receiver ACK does not arrive within 15 seconds, complete anyway
+    setTimeout(() => {
+      setTransfers((currentTransfers) =>
+        currentTransfers.map((t) => {
+          if (t.id === transferId && t.status === 'verifying') {
+            console.log(`[TRANSFER] Safety timeout reached for ${file.name} — completing sender side`);
+            return {
+              ...t,
+              status: 'complete',
+              progress: 100,
+              transferred: file.size,
+              speed: 0,
+              eta: 0,
+              completedAt: Date.now(),
+            };
+          }
+          return t;
+        })
+      );
+    }, 15000);
   }, [dataChannelRef, updateTransfer, useFallback, sendFallbackChunk]);
 
   // ─────────────────────────────────────────────────────────────────────────
-  // RECEIVE
+  // RECEIVE & ACK MESSAGES
   // ─────────────────────────────────────────────────────────────────────────
 
   const handleDataChannelMessage = useCallback((event: MessageEvent) => {
@@ -234,7 +265,6 @@ export function useFileTransfer(
       const progress = acc.addChunk(idx, chunkBuffer);
       const info = acc.getInfo();
 
-      // Speed tracking
       setTransfers((prev) =>
         prev.map((t) => {
           if (t.id !== tid) return t;
@@ -245,6 +275,7 @@ export function useFileTransfer(
           const eta = speed > 0 ? remaining / speed : -1;
           return {
             ...t,
+            status: 'transferring',
             progress,
             transferred: acc.bytesReceived,
             speed,
@@ -263,12 +294,13 @@ export function useFileTransfer(
       try {
         msg = JSON.parse(data) as DCMessage;
       } catch {
-        console.warn('[FileTransfer] Non-JSON string message received');
+        console.warn('[TRANSFER] Non-JSON string message received');
         return;
       }
 
       switch (msg.type) {
         case 'file-start': {
+          console.log(`[TRANSFER] receiver file-start: ${msg.name} (${msg.size} bytes, ${msg.totalChunks} chunks)`);
           const acc = new ChunkAccumulator({
             name: msg.name,
             size: msg.size,
@@ -279,6 +311,7 @@ export function useFileTransfer(
 
           const item: FileTransferItem = {
             id: msg.transferId,
+            fileId: msg.fileId,
             name: msg.name,
             size: msg.size,
             mimeType: msg.mimeType,
@@ -291,9 +324,8 @@ export function useFileTransfer(
             startedAt: Date.now(),
           };
 
-          // If all previous transfers were finished (complete/cancelled/error),
-          // this file-start marks the start of a NEW transfer batch.
-          // Discard old transfer items so history is never retained across transfers.
+          // Receiver state transition: Immediately add item to transfers state
+          // so UI leaves "Waiting for sender..." state right away.
           setTransfers((prev) => {
             const allFinished = prev.length > 0 && prev.every(
               (t) => t.status === 'complete' || t.status === 'cancelled' || t.status === 'error'
@@ -301,9 +333,12 @@ export function useFileTransfer(
             if (allFinished) {
               return [item];
             }
+            const exists = prev.some((t) => t.id === item.id);
+            if (exists) {
+              return prev.map((t) => (t.id === item.id ? item : t));
+            }
             return [...prev, item];
           });
-          console.log(`[FileTransfer] Receiving: ${msg.name} (${msg.size} bytes, ${msg.totalChunks} chunks)`);
           break;
         }
 
@@ -314,31 +349,88 @@ export function useFileTransfer(
         }
 
         case 'file-end': {
+          console.log(`[TRANSFER] file-end: validating received bytes for ${msg.transferId}`);
           const acc = accumulators.current.get(msg.transferId);
-          if (!acc) break;
+          if (!acc) {
+            console.warn(`[TRANSFER] file-end: accumulator not found for ${msg.transferId}`);
+            break;
+          }
 
           try {
-            const blob = acc.assemble();
             const info = acc.getInfo();
-            const url = downloadBlob(blob, info.name);
+            const receivedBytes = acc.bytesReceived;
+            console.log(`[TRANSFER] receiver bytes: ${receivedBytes} / ${info.size}`);
 
-            updateTransfer(msg.transferId, {
-              status: 'complete',
-              progress: 100,
-              transferred: info.size,
-              speed: 0,
-              eta: 0,
-              completedAt: Date.now(),
-              downloadUrl: url,
-            });
+            if (receivedBytes === info.size || acc.isComplete()) {
+              const blob = acc.assemble();
+              const url = downloadBlob(blob, info.name);
 
-            console.log(`[FileTransfer] Received and assembled: ${info.name}`);
+              updateTransfer(msg.transferId, {
+                status: 'complete',
+                progress: 100,
+                transferred: info.size,
+                speed: 0,
+                eta: 0,
+                completedAt: Date.now(),
+                downloadUrl: url,
+              });
+
+              console.log(`[TRANSFER] receiver ACK sent: file ${info.name} completely assembled`);
+
+              // Send file-received ACK back to sender
+              sendJSON({
+                type: 'file-received',
+                transferId: msg.transferId,
+                fileId: msg.fileId || msg.transferId,
+                receivedBytes: info.size,
+                success: true,
+              });
+            } else {
+              console.error(`[TRANSFER] Size mismatch on receiver: got ${receivedBytes}, expected ${info.size}`);
+              updateTransfer(msg.transferId, { status: 'error', error: 'File size mismatch.' });
+
+              sendJSON({
+                type: 'file-error',
+                transferId: msg.transferId,
+                fileId: msg.fileId || msg.transferId,
+                reason: 'SIZE_MISMATCH',
+              });
+            }
           } catch (err) {
-            console.error('[FileTransfer] Assembly error:', err);
+            console.error('[TRANSFER] Receiver assembly error:', err);
             updateTransfer(msg.transferId, { status: 'error', error: 'File reassembly failed.' });
+
+            sendJSON({
+              type: 'file-error',
+              transferId: msg.transferId,
+              fileId: msg.fileId || msg.transferId,
+              reason: 'REASSEMBLY_FAILED',
+            });
           }
 
           accumulators.current.delete(msg.transferId);
+          break;
+        }
+
+        case 'file-received': {
+          console.log(`[TRANSFER] sender ACK received for transfer ${msg.transferId} (success=${msg.success})`);
+          updateTransfer(msg.transferId, {
+            status: 'complete',
+            progress: 100,
+            speed: 0,
+            eta: 0,
+            completedAt: Date.now(),
+          });
+          console.log(`[TRANSFER] final complete for transfer ${msg.transferId}`);
+          break;
+        }
+
+        case 'file-error': {
+          console.warn(`[TRANSFER] sender received error ACK for transfer ${msg.transferId}: ${msg.reason}`);
+          updateTransfer(msg.transferId, {
+            status: 'error',
+            error: `Receiver reported error: ${msg.reason}`,
+          });
           break;
         }
 
@@ -349,19 +441,18 @@ export function useFileTransfer(
         }
       }
     }
-  }, [updateTransfer]);
+  }, [updateTransfer, useFallback, sendFallbackChunk, dataChannelRef]);
 
   // ─────────────────────────────────────────────────────────────────────────
-  // CANCEL
+  // CANCEL & RESET
   // ─────────────────────────────────────────────────────────────────────────
 
   const cancelTransfer = useCallback((transferId: string) => {
     cancelFlags.current.add(transferId);
-    // If it's a receive, we'll get the cancel message from sender
-    // If it's a send, the loop will pick up the flag on next iteration
   }, []);
 
   const clearTransfers = useCallback(() => {
+    console.log('[TRANSFER] Clearing all file history and accumulators');
     setTransfers([]);
     accumulators.current.clear();
     cancelFlags.current.clear();
@@ -377,7 +468,6 @@ function uuidv4(): string {
   if (typeof crypto !== 'undefined' && crypto.randomUUID) {
     return crypto.randomUUID();
   }
-  // Fallback for older browsers
   return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
     const r = (Math.random() * 16) | 0;
     const v = c === 'x' ? r : (r & 0x3) | 0x8;

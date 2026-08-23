@@ -150,14 +150,16 @@ function TransferCard({ transfer: t, onCancel }: TransferCardProps) {
     ? 'text-red-400'
     : 'text-brand-400';
 
-  const statusLabel = {
+  const statusMap: Record<string, string> = {
     transferring: t.direction === 'send' ? 'Sending...' : 'Receiving...',
+    verifying: 'Verifying...',
     complete: t.direction === 'send' ? 'Sent ✓' : 'Received ✓',
     error: 'Failed',
     cancelled: 'Cancelled',
     queued: 'Queued',
     paused: 'Paused',
-  }[t.status];
+  };
+  const statusLabel = statusMap[t.status] || 'Processing...';
 
   return (
     <div className={`glass-card p-4 animate-fade-in ${isComplete ? 'border-emerald-500/20' : ''}`}>
