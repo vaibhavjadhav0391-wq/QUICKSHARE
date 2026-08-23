@@ -380,7 +380,13 @@ export function UnifiedApp() {
   const renderScreen = () => {
     switch (screen) {
       case 'home':
-        return <HomeScreen onSend={handleSendClick} onReceive={handleReceiveClick} />;
+        return (
+          <HomeScreen
+            onSend={handleSendClick}
+            onReceive={handleReceiveClick}
+            onHowItWorks={() => navigate('/how-it-works')}
+          />
+        );
 
       case 'send-select':
         return (
@@ -460,7 +466,13 @@ export function UnifiedApp() {
         );
 
       default:
-        return <HomeScreen onSend={handleSendClick} onReceive={handleReceiveClick} />;
+        return (
+          <HomeScreen
+            onSend={handleSendClick}
+            onReceive={handleReceiveClick}
+            onHowItWorks={() => navigate('/how-it-works')}
+          />
+        );
     }
   };
 
@@ -503,6 +515,15 @@ export function UnifiedApp() {
                 {isRelay ? 'Relay' : 'P2P'}
               </div>
             )}
+
+            {/* How It Works Button */}
+            <button
+              onClick={() => navigate('/how-it-works')}
+              className="flex items-center gap-1.5 text-xs text-white/70 hover:text-white bg-white/5 border border-white/10 hover:bg-white/10 transition-all px-3 py-1.5 rounded-xl font-medium"
+              id="btn-how-it-works-header"
+            >
+              <span>⚡ How it works</span>
+            </button>
 
             {/* New Session / Cancel (only when not on home) */}
             {screen !== 'home' && (

@@ -3,9 +3,10 @@ import { formatBytes, fileTypeIcon, truncateFilename } from '@/utils/formatters'
 interface HomeScreenProps {
   onSend: () => void;
   onReceive: () => void;
+  onHowItWorks?: () => void;
 }
 
-export function HomeScreen({ onSend, onReceive }: HomeScreenProps) {
+export function HomeScreen({ onSend, onReceive, onHowItWorks }: HomeScreenProps) {
   return (
     <div className="flex flex-col items-center justify-center min-h-[calc(100vh-140px)] px-4 py-12 animate-fade-in">
       {/* Hero */}
@@ -23,7 +24,7 @@ export function HomeScreen({ onSend, onReceive }: HomeScreenProps) {
       </div>
 
       {/* Primary Action Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 w-full max-w-2xl mb-8">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 w-full max-w-2xl mb-6">
         {/* Send Files */}
         <button
           id="btn-send-files"
@@ -74,6 +75,18 @@ export function HomeScreen({ onSend, onReceive }: HomeScreenProps) {
           </div>
         </button>
       </div>
+
+      {/* How it works CTA button */}
+      {onHowItWorks && (
+        <button
+          id="btn-how-it-works-home"
+          onClick={onHowItWorks}
+          className="mb-8 flex items-center gap-2 px-5 py-2.5 rounded-full bg-white/5 border border-white/10 hover:bg-white/10 hover:border-amber-400/30 text-white/80 hover:text-white text-xs font-semibold transition-all group shadow-md"
+        >
+          <span className="text-amber-400 font-bold">⚡ How QuickTransfer Works</span>
+          <span className="text-white/40 group-hover:translate-x-0.5 transition-transform">→</span>
+        </button>
+      )}
 
       {/* Feature pills */}
       <div className="flex flex-wrap items-center justify-center gap-3 text-xs text-white/35">
