@@ -24,29 +24,48 @@ Just scan a QR code or enter a 6-digit connection code to transfer files directl
 
 ## 🏗️ Architecture & Protocol
 
-```text
-Browser (Sender/PC)          Signaling Server (Socket.IO)          Browser (Receiver/Mobile)
-       │                                  │                                  │
-       │─────── create-session ──────────►│                                  │
-       │◄────── session-created ──────────│                                  │
-       │       (token, shortCode)         │                                  │
-       │                                  │◄─────── join-session / code ─────│
-       │◄────── peer-joined ──────────────│                                  │
-       │                                  │──────── join-success ───────────►│
-       │─────── offer (SDP) ─────────────►│─────────────────────────────────►│
-       │◄────── answer (SDP) ─────────────│◄─────────────────────────────────│
-       │─────── ICE candidates ──────────►│─────────────────────────────────►│
-       │◄────── ICE candidates ───────────│◄─────────────────────────────────│
-       │                                  │                                  │
-       │══════════════════ WebRTC DataChannel (Direct P2P / TURN) ══════════════════│
-       │                                                                            │
-       │─────── file-start (metadata) ─────────────────────────────────────────────►│
-       │       [Receiver transitions state out of "Waiting for sender..."]          │
-       │─────── chunk-meta + binary ArrayBuffer chunks ──────────────────────────►│
-       │─────── file-end ──────────────────────────────────────────────────────────►│
-       │       [Receiver validates byte size & assembles Blob]                      │
-       │◄────── file-received ACK ──────────────────────────────────────────────────│
-       │       [Sender transitions to "Transfer Complete ✓"]                        │
+![QuickTransfer Architecture Protocol](./docs/architecture.png)
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor PC as Sender Browser (PC)
+    participant SS as Signaling Server (Socket.IO)
+    actor Mobile as Receiver Browser (Mobile)
+
+    rect rgb(30, 41, 59)
+        note over PC,Mobile: Phase 1: Session Initialization & QR Scan
+        PC->>SS: create-session
+        SS-->>PC: session-created (token, shortCode)
+        Mobile->>SS: join-session (token / code)
+        SS-->>PC: peer-joined
+        SS-->>Mobile: join-success
+    end
+
+    rect rgb(15, 23, 42)
+        note over PC,Mobile: Phase 2: WebRTC Handshake & Candidate Exchange
+        PC->>SS: offer (SDP)
+        SS->>Mobile: offer (SDP)
+        Mobile->>SS: answer (SDP)
+        SS->>PC: answer (SDP)
+        PC->>SS: ICE candidates (Host / STUN / TURN)
+        SS->>Mobile: ICE candidates
+        Mobile->>SS: ICE candidates
+        SS->>PC: ICE candidates
+    end
+
+    rect rgb(6, 78, 59)
+        note over PC,Mobile: Phase 3: Direct WebRTC DataChannel (P2P / TURN)
+        PC->>Mobile: file-start (metadata)
+        note over Mobile: Instantly leaves "Waiting for sender..." state
+        loop Binary Chunk Streaming
+            PC->>Mobile: chunk-meta + ArrayBuffer chunk data (64KB backpressure)
+        end
+        PC->>Mobile: file-end (transfer finished)
+        note over Mobile: Validates byte size & assembles Blob
+        Mobile-->>PC: file-received ACK (success: true)
+        note over PC,Mobile: Both devices transition to "Transfer Complete ✓"
+    end
 ```
 
 ---
