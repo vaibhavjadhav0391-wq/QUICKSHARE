@@ -5,6 +5,8 @@ import { useWebRTC } from '@/hooks/useWebRTC';
 import { useFileTransfer } from '@/hooks/useFileTransfer';
 import { HyperText } from '@/components/ui/hyper-text';
 import { buildJoinUrl, vibrate } from '@/utils/deviceDetect';
+import { useTheme } from '@/context/ThemeContext';
+import { StarWarsToggleSwitch } from '@/components/ui/star-wars-toggle-switch';
 
 // ── SCREENS ──
 import { HomeScreen } from './screens/HomeScreen';
@@ -34,6 +36,7 @@ export function UnifiedApp() {
   // urlToken is present when user opens /join/<token>
   const { token: urlToken } = useParams<{ token?: string }>();
   const navigate = useNavigate();
+  const { isDark, toggleTheme } = useTheme();
 
   // ── UI state ──
   const [screen, setScreen] = useState<AppScreen>(() => urlToken ? 'receive-connect' : 'home');
@@ -524,6 +527,12 @@ export function UnifiedApp() {
             >
               <span>⚡ How it works</span>
             </button>
+
+            {/* BB-8 Theme Toggle */}
+            <StarWarsToggleSwitch
+              checked={isDark}
+              onChange={toggleTheme}
+            />
 
             {/* New Session / Cancel (only when not on home) */}
             {screen !== 'home' && (

@@ -1,11 +1,14 @@
 import { useNavigate } from 'react-router-dom';
 import HowItWorks from '@/components/ui/how-it-works';
+import { useTheme } from '@/context/ThemeContext';
+import { StarWarsToggleSwitch } from '@/components/ui/star-wars-toggle-switch';
 
 export function HowItWorksPage() {
   const navigate = useNavigate();
+  const { isDark, toggleTheme } = useTheme();
 
   return (
-    <div className="min-h-screen bg-black text-white flex flex-col font-sans selection:bg-amber-500/30">
+    <div className="min-h-screen flex flex-col font-sans selection:bg-amber-500/30">
       {/* Header */}
       <header className="sticky top-0 z-40 border-b border-white/10 bg-black/80 backdrop-blur-xl">
         <div className="max-w-5xl mx-auto px-4 md:px-8 h-16 flex items-center justify-between">
@@ -23,13 +26,19 @@ export function HowItWorksPage() {
             <span className="font-bold text-lg text-white">How QuickTransfer Works</span>
           </div>
 
-          <button
-            onClick={() => navigate('/')}
-            className="px-4 py-2 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 text-slate-950 font-bold text-xs hover:from-amber-400 hover:to-orange-400 transition-all shadow-md shadow-amber-500/20"
-            id="btn-flow-start"
-          >
-            Start Transfer →
-          </button>
+          <div className="flex items-center gap-3">
+            <StarWarsToggleSwitch
+              checked={isDark}
+              onChange={toggleTheme}
+            />
+            <button
+              onClick={() => navigate('/')}
+              className="px-4 py-2 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 text-slate-950 font-bold text-xs hover:from-amber-400 hover:to-orange-400 transition-all shadow-md shadow-amber-500/20"
+              id="btn-flow-start"
+            >
+              Start Transfer →
+            </button>
+          </div>
         </div>
       </header>
 
