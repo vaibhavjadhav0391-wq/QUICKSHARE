@@ -22,15 +22,16 @@ import type { FileTransferItem } from '@/types';
 // ────────────────────────────────────────────────────────────────
 type AppScreen =
   | 'home'
-  | 'send-select'       // sender picks files
-  | 'send-waiting'      // sender shows QR + waits
-  | 'receive-connect'   // receiver scans / enters code
-  | 'connected-sender'  // both connected, sender confirms send
-  | 'connected-receiver'// both connected, receiver sees incoming files
-  | 'transferring'      // transfer in progress
-  | 'complete';         // transfer done
+  | 'send-select'        // sender picks files
+  | 'send-waiting'       // sender shows QR + waits
+  | 'receive-connect'    // receiver scans / enters code
+  | 'connected-sender'   // both connected, sender confirms send
+  | 'connected-receiver' // both connected, receiver sees incoming files
+  | 'transferring'       // transfer in progress
+  | 'complete';          // transfer done
 
 export function UnifiedApp() {
+  // urlToken is present when user opens /join/<token>
   const { token: urlToken } = useParams<{ token?: string }>();
   const navigate = useNavigate();
 
@@ -44,14 +45,14 @@ export function UnifiedApp() {
   const [accepted, setAccepted] = useState(false);
 
   // ── Connection ──
+  // joinToken drives useSignaling: when set + role='mobile', it joins the session
   const [joinToken, setJoinToken] = useState<string | undefined>(urlToken);
   const [peerJoined, setPeerJoined] = useState(false);
   const [connectError, setConnectError] = useState<string | null>(null);
-  const [isConnecting, setIsConnecting] = useState(false);
+  const [isConnecting, setIsConnecting] = useState(() => !!urlToken); // start connecting immediately when URL token present
 
   const dataChannelRef = useRef<RTCDataChannel | null>(null);
-  // Distinguishes sender vs receiver role across the app
-  // Initialize to 'receiver' immediately if arriving via a join URL
+  // Initialize to receiver role immediately when arriving via a join URL
   const userRole = useRef<'sender' | 'receiver'>(urlToken ? 'receiver' : 'sender');
 
   // ── SIGNALING ──
@@ -70,6 +71,7 @@ export function UnifiedApp() {
     role: joinToken ? 'mobile' : 'pc',
     joinToken,
     onPeerJoined: () => {
+      console.log('[QuickTransfer] Peer connected (sender side)');
       setPeerJoined(true);
       vibrate(100);
       // PC (sender) → receiver connected → move to confirm-send screen
@@ -92,6 +94,7 @@ export function UnifiedApp() {
       handleReset();
     },
     onCodeResolved: (token) => {
+      console.log('[QuickTransfer] Code resolved to token:', token.slice(0, 8) + '...');
       setJoinToken(token);
       setIsConnecting(true);
       setConnectError(null);
@@ -109,6 +112,7 @@ export function UnifiedApp() {
       ? (sigState === 'connecting' || sigState === 'connected')
       : peerJoined,
     onDataChannelOpen: (channel) => {
+      console.log('[QuickTransfer] Signaling connected: WebRTC DataChannel open');
       dataChannelRef.current = channel;
       vibrate([100, 50, 100]);
       markConnected('webrtc');
@@ -116,7 +120,10 @@ export function UnifiedApp() {
       setConnectError(null);
       // Receiver side: move to connected-receiver screen
       if (userRole.current === 'receiver') {
+        console.log('[QuickTransfer] Join success — moving to connected-receiver');
         setScreen('connected-receiver');
+        // Clean URL now that we're connected
+        navigate('/', { replace: true });
       }
     },
     onDataChannelMessage: (e) => handleDataChannelMessage(e),
@@ -124,11 +131,14 @@ export function UnifiedApp() {
       dataChannelRef.current = null;
     },
     onConnectionFailed: () => {
+      // WebRTC failed — fall back to WS relay
       markConnected('ws');
       setIsConnecting(false);
       // Receiver: still show connected screen in relay mode
       if (userRole.current === 'receiver' && screen === 'receive-connect') {
+        console.log('[QuickTransfer] Join success (relay fallback) — moving to connected-receiver');
         setScreen('connected-receiver');
+        navigate('/', { replace: true });
       }
     },
     sendOffer,
@@ -141,18 +151,47 @@ export function UnifiedApp() {
   const { transfers, sendFile, handleDataChannelMessage, cancelTransfer } =
     useFileTransfer(dataChannelRef, sendFallbackChunk, isRelay);
 
-  // ── Detect join-success for receiver to navigate to connected screen ──
+  // ── When urlToken arrives (deep link), set up receiver mode ──
+  // CRITICAL: do NOT navigate away from /join/:token until after joining succeeds.
+  // We only store the joinToken in state; the URL stays as-is until connected.
+  useEffect(() => {
+    if (urlToken) {
+      console.log('[QuickTransfer] Join URL detected:', urlToken.slice(0, 8) + '...');
+      console.log('[QuickTransfer] Parsed session token:', urlToken);
+      userRole.current = 'receiver';
+      setScreen('receive-connect');
+      setIsConnecting(true);
+      setConnectError(null);
+      // joinToken is already set from useState(urlToken) initial value.
+      // Only update if different (handles HMR / strict-mode double-fire).
+      setJoinToken(prev => (prev !== urlToken ? urlToken : prev));
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [urlToken]);
+
+  // ── Log when signaling emits join-session ──
+  useEffect(() => {
+    if (joinToken && sigState === 'connecting') {
+      console.log('[QuickTransfer] Join requested — token:', joinToken.slice(0, 8) + '...');
+    }
+  }, [joinToken, sigState]);
+
+  // ── Detect join-success: sigState moves to 'connecting' (server confirmed join) ──
   useEffect(() => {
     if (sigState === 'connecting' && userRole.current === 'receiver') {
+      console.log('[QuickTransfer] Signaling connected — waiting for WebRTC...');
       setIsConnecting(true);
     }
+    // ws-fallback: connected via relay (WebRTC not available / timed out)
     if ((sigState === 'connected' || sigState === 'ws-fallback') && userRole.current === 'receiver') {
+      console.log('[QuickTransfer] Join success — state:', sigState);
       setIsConnecting(false);
       if (screen === 'receive-connect') {
         setScreen('connected-receiver');
+        navigate('/', { replace: true });
       }
     }
-  }, [sigState, screen]);
+  }, [sigState, screen, navigate]);
 
   // ── Detect incoming file-start to update pending list ──
   useEffect(() => {
@@ -181,16 +220,14 @@ export function UnifiedApp() {
     }
   }, [transfers, screen]);
 
-  // ── If URL has a token, go to receive-connect immediately ──
+  // ── Propagate sigError to UI ──
   useEffect(() => {
-    if (urlToken && urlToken !== joinToken) {
-      setJoinToken(urlToken);
-      userRole.current = 'receiver';
-      setScreen('receive-connect');
-      // Clean up the URL using React Router so the SPA navigation stays consistent
-      navigate('/', { replace: true });
+    if (sigError && (screen === 'receive-connect' || isConnecting)) {
+      console.warn('[QuickTransfer] Signaling error:', sigError);
+      setConnectError(sigError);
+      setIsConnecting(false);
     }
-  }, [urlToken, navigate]);
+  }, [sigError, screen, isConnecting]);
 
   // ────────────────────────────────────────────────────────────────
   // Handlers
@@ -209,9 +246,9 @@ export function UnifiedApp() {
     userRole.current = 'sender';
     dataChannelRef.current = null;
     setResetKey(k => k + 1);
-    if (urlToken) navigate('/', { replace: true });
+    navigate('/', { replace: true });
     setScreen('home');
-  }, [endSession, closePeer, urlToken, navigate]);
+  }, [endSession, closePeer, navigate]);
 
   const handleSendClick = useCallback(() => {
     userRole.current = 'sender';
@@ -236,16 +273,26 @@ export function UnifiedApp() {
     setScreen('send-waiting');
   }, []);
 
+  /**
+   * Central join function called by:
+   *   - 6-char code entry (manual)
+   *   - QR scan (token extracted from URL)
+   *   - (URL-based join is handled via urlToken → joinToken state)
+   */
   const handleReceiverConnect = useCallback((codeOrToken: string) => {
     setConnectError(null);
     setIsConnecting(true);
     const trimmed = codeOrToken.trim();
+    userRole.current = 'receiver';
 
-    // Decide if it's a short code (≤6 chars) or a full token
     if (trimmed.length <= 6) {
+      // Short code path: server resolves code → token via 'code-resolved' event
+      console.log('[QuickTransfer] Code entered:', trimmed);
+      console.log('[QuickTransfer] Joining by code:', trimmed.toUpperCase());
       joinByCode(trimmed.toUpperCase());
     } else {
-      // Full token — set as joinToken so useSignaling creates mobile role
+      // Full token path (from QR scan or manual paste of a full token)
+      console.log('[QuickTransfer] Joining session by token:', trimmed.slice(0, 8) + '...');
       setJoinToken(trimmed);
     }
   }, [joinByCode]);
@@ -267,16 +314,21 @@ export function UnifiedApp() {
     handleReset();
   }, [handleReset]);
 
-  // sigError from connection issue
-  useEffect(() => {
-    if (sigError && (screen === 'receive-connect' || isConnecting)) {
-      setConnectError(sigError);
-      setIsConnecting(false);
-    }
-  }, [sigError, screen, isConnecting]);
-
   const isConnected = sigState === 'connected' || sigState === 'ws-fallback';
+
+  // Build join URL from sender's session token
   const joinUrl = session ? buildJoinUrl(session.token) : (joinToken ? buildJoinUrl(joinToken) : '');
+
+  // Log session info when created (sender side)
+  useEffect(() => {
+    if (session) {
+      console.log('[QuickTransfer] Session created');
+      console.log('[QuickTransfer] Session ID:', session.token.slice(0, 8) + '...');
+      console.log('[QuickTransfer] Connection code:', session.shortCode);
+      console.log('[QuickTransfer] Share URL:', buildJoinUrl(session.token));
+      console.log('[QuickTransfer] QR payload:', buildJoinUrl(session.token));
+    }
+  }, [session]);
 
   // ────────────────────────────────────────────────────────────────
   // Render
@@ -310,9 +362,17 @@ export function UnifiedApp() {
         return (
           <ReceiveConnectScreen
             onConnect={handleReceiverConnect}
-            onBack={() => { setJoinToken(undefined); setScreen('home'); if (urlToken) navigate('/', { replace: true }); }}
+            onBack={() => {
+              setJoinToken(undefined);
+              setIsConnecting(false);
+              setConnectError(null);
+              setScreen('home');
+              navigate('/', { replace: true });
+            }}
             error={connectError}
             isConnecting={isConnecting}
+            // Pass urlToken so the screen can show "Joining shared session..." immediately
+            autoJoinToken={urlToken}
           />
         );
 
