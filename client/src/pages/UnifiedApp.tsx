@@ -486,7 +486,7 @@ export function UnifiedApp() {
     <div key={resetKey} className="min-h-screen flex flex-col text-white font-sans selection:bg-amber-500/30">
 
       {/* ── HEADER ── */}
-      <header className="sticky top-0 z-30 border-b border-white/8 bg-black/40 backdrop-blur-xl">
+      <header className="sticky top-0 z-30 bg-black/40 backdrop-blur-xl">
         <div className="max-w-5xl mx-auto px-4 md:px-8 h-16 flex items-center justify-between">
           {/* Logo */}
           <button

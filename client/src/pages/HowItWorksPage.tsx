@@ -10,7 +10,7 @@ export function HowItWorksPage() {
   return (
     <div className="min-h-screen flex flex-col font-sans selection:bg-amber-500/30">
       {/* Header */}
-      <header className="sticky top-0 z-40 border-b border-white/10 bg-black/80 backdrop-blur-xl">
+      <header className="sticky top-0 z-40 bg-black/80 backdrop-blur-xl">
         <div className="max-w-5xl mx-auto px-4 md:px-8 h-16 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <button
