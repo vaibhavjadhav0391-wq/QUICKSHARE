@@ -51,7 +51,8 @@ export function UnifiedApp() {
 
   const dataChannelRef = useRef<RTCDataChannel | null>(null);
   // Distinguishes sender vs receiver role across the app
-  const userRole = useRef<'sender' | 'receiver'>('sender');
+  // Initialize to 'receiver' immediately if arriving via a join URL
+  const userRole = useRef<'sender' | 'receiver'>(urlToken ? 'receiver' : 'sender');
 
   // ── SIGNALING ──
   const {
@@ -186,10 +187,10 @@ export function UnifiedApp() {
       setJoinToken(urlToken);
       userRole.current = 'receiver';
       setScreen('receive-connect');
-      // Clean up the URL
-      window.history.replaceState({}, '', window.location.pathname.replace(`/join/${urlToken}`, '/'));
+      // Clean up the URL using React Router so the SPA navigation stays consistent
+      navigate('/', { replace: true });
     }
-  }, [urlToken]);
+  }, [urlToken, navigate]);
 
   // ────────────────────────────────────────────────────────────────
   // Handlers
