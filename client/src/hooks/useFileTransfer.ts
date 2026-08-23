@@ -7,8 +7,9 @@ import {
 } from '@/lib/fileChunker';
 import type { FileTransferItem, DCMessage } from '@/types';
 
-// Max bytes buffered in DataChannel before we pause and wait
-const MAX_BUFFER_BYTES = 2 * 1024 * 1024; // 2 MB
+// Max bytes buffered in DataChannel before pausing sending (128 KB)
+const MAX_BUFFER_BYTES = 128 * 1024;
+const LOW_WATERMARK_BYTES = 64 * 1024;
 
 interface UseFileTransferReturn {
   transfers: FileTransferItem[];
@@ -23,19 +24,7 @@ interface UseFileTransferReturn {
 
 /**
  * useFileTransfer — handles the complete file send/receive lifecycle over
- * a WebRTC DataChannel.
- *
- * Send protocol (per file):
- *   1. JSON: { type: 'file-start', transferId, name, size, mimeType, totalChunks }
- *   2. JSON: { type: 'chunk-meta', transferId, chunkIndex }  (before each chunk)
- *   3. ArrayBuffer: chunk data
- *   4. JSON: { type: 'file-end', transferId }
- *
- * Receive protocol:
- *   - On 'file-start': create ChunkAccumulator
- *   - On 'chunk-meta': note pending chunk index
- *   - On ArrayBuffer: store as chunk[pendingIndex]
- *   - On 'file-end': assemble Blob, trigger download
+ * a WebRTC DataChannel or WebSocket Fallback Relay.
  */
 export function useFileTransfer(
   dataChannelRef: React.RefObject<RTCDataChannel | null>,
@@ -73,19 +62,36 @@ export function useFileTransfer(
   }
 
   /**
-   * Wait for DataChannel buffer to drain below threshold.
-   * This prevents the browser from buffering gigabytes in memory.
+   * Wait for DataChannel buffer to drain below low watermark threshold.
    */
   function waitForBuffer(channel: RTCDataChannel): Promise<void> {
-    if (channel.bufferedAmount < MAX_BUFFER_BYTES) return Promise.resolve();
+    if (channel.bufferedAmount <= LOW_WATERMARK_BYTES) return Promise.resolve();
     return new Promise((resolve) => {
-      const handler = () => {
-        if (channel.bufferedAmount < MAX_BUFFER_BYTES) {
+      let resolved = false;
+
+      const finish = () => {
+        if (!resolved) {
+          resolved = true;
           channel.removeEventListener('bufferedamountlow', handler);
+          clearInterval(pollTimer);
           resolve();
         }
       };
+
+      const handler = () => {
+        if (channel.bufferedAmount <= LOW_WATERMARK_BYTES) {
+          finish();
+        }
+      };
+
       channel.addEventListener('bufferedamountlow', handler);
+
+      // Fallback poll timer in case bufferedamountlow event doesn't trigger
+      const pollTimer = setInterval(() => {
+        if (channel.bufferedAmount <= LOW_WATERMARK_BYTES) {
+          finish();
+        }
+      }, 15);
     });
   }
 
@@ -95,13 +101,17 @@ export function useFileTransfer(
 
   const sendFile = useCallback(async (file: File) => {
     const ch = dataChannelRef.current;
-    if (!useFallback && (!ch || ch.readyState !== 'open')) {
-      console.error('[FileTransfer] DataChannel not open');
-      return;
+    if (!useFallback) {
+      if (!ch || ch.readyState !== 'open') {
+        console.error(`[FileTransfer Diagnostic] DataChannel not open (state: ${ch?.readyState || 'null'})`);
+        return;
+      }
     }
 
     const transferId = uuidv4();
     const totalChunks = totalChunksFor(file.size);
+
+    console.log(`[FileTransfer Diagnostic] Starting file send: ${file.name} (${file.size} bytes, ${totalChunks} chunks), mode=${useFallback ? 'WebSocket Relay' : 'WebRTC DataChannel'}`);
 
     const item: FileTransferItem = {
       id: transferId,
@@ -143,22 +153,27 @@ export function useFileTransfer(
         return;
       }
 
-      // Wait for buffer backpressure
+      // Wait for DataChannel buffer backpressure
       if (!useFallback && ch) {
-        await waitForBuffer(ch);
+        if (ch.bufferedAmount > MAX_BUFFER_BYTES) {
+          await waitForBuffer(ch);
+        }
       } else if (useFallback) {
-        // Simple breathing room for socket.io loop
         await new Promise((resolve) => setTimeout(resolve, 0));
       }
 
-      // Send chunk metadata (so receiver knows what index is coming)
+      // Send chunk metadata
       sendJSON({ type: 'chunk-meta', transferId, chunkIndex });
       
       // Send raw binary chunk
       if (useFallback && sendFallbackChunk) {
         sendFallbackChunk(chunk);
-      } else if (ch) {
+      } else if (ch && ch.readyState === 'open') {
         ch.send(chunk);
+      } else {
+        console.warn(`[FileTransfer Diagnostic] Aborting chunk ${chunkIndex} - DataChannel closed unexpectedly`);
+        updateTransfer(transferId, { status: 'error', error: 'DataChannel disconnected during transfer.' });
+        return;
       }
 
       bytesSent += chunk.byteLength;

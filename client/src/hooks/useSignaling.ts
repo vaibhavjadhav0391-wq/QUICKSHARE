@@ -149,17 +149,17 @@ export function useSignaling(options: UseSignalingOptions): UseSignalingReturn {
       console.log('[Signaling] Join success on mobile');
       setState('connecting');
 
-      // Start 3.5s fallback timer — if WebRTC P2P fails/stalls, switch to WS relay automatically
+      // Start 12s fallback safety timer — if WebRTC fails/stalls, switch to WS relay
       clearFallbackTimer();
       fallbackTimerRef.current = setTimeout(() => {
         setState((current) => {
           if (current === 'connecting') {
-            console.log('[Signaling] WebRTC timeout reached (3.5s) — auto fallback to WS relay');
+            console.log('[Signaling] WebRTC timeout reached (12s) — auto fallback to WS relay');
             return 'ws-fallback';
           }
           return current;
         });
-      }, 3500);
+      }, 12000);
     });
 
     socket.on('join-error', ({ message }: { message: string }) => {
@@ -179,17 +179,17 @@ export function useSignaling(options: UseSignalingOptions): UseSignalingReturn {
       setState('connecting');
       callbacksRef.current.onPeerJoined?.();
 
-      // Start 3.5s fallback timer on PC side too
+      // Start 12s fallback safety timer on PC side too
       clearFallbackTimer();
       fallbackTimerRef.current = setTimeout(() => {
         setState((current) => {
           if (current === 'connecting') {
-            console.log('[Signaling] WebRTC timeout reached on PC — auto fallback to WS relay');
+            console.log('[Signaling] WebRTC timeout reached on PC (12s) — auto fallback to WS relay');
             return 'ws-fallback';
           }
           return current;
         });
-      }, 3500);
+      }, 12000);
     });
 
     socket.on('peer-disconnected', ({ role: peerRole }: { role: 'pc' | 'mobile' }) => {

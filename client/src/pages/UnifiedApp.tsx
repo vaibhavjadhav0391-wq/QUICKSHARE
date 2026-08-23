@@ -122,7 +122,7 @@ export function UnifiedApp() {
   });
 
   // ── WEBRTC ──
-  const { handleOffer, handleAnswer, handleIceCandidate, closePeer } = useWebRTC({
+  const { handleOffer, handleAnswer, handleIceCandidate, closePeer, candidateType } = useWebRTC({
     isInitiator: !joinToken,
     enabled: joinToken
       ? (sigState === 'connecting' || sigState === 'connected')
@@ -163,9 +163,12 @@ export function UnifiedApp() {
   });
 
   // ── FILE TRANSFER ──
-  const isRelay = sigState === 'ws-fallback';
+  const isWebRTCRelay = candidateType === 'relay';
+  const isSocketRelay = sigState === 'ws-fallback';
+  const isRelay = isWebRTCRelay || isSocketRelay;
+
   const { transfers, sendFile, handleDataChannelMessage, cancelTransfer, clearTransfers } =
-    useFileTransfer(dataChannelRef, sendFallbackChunk, isRelay);
+    useFileTransfer(dataChannelRef, sendFallbackChunk, isSocketRelay);
 
   // Helper to completely wipe all file and transfer state for a clean new transfer
   const clearAllFileState = useCallback(() => {
@@ -515,7 +518,7 @@ export function UnifiedApp() {
               <div className={`flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-full border
                 ${isRelay ? 'bg-amber-500/10 border-amber-500/25 text-amber-400' : 'bg-emerald-500/10 border-emerald-500/25 text-emerald-400'}`}>
                 <span className="w-1.5 h-1.5 rounded-full bg-current animate-pulse" />
-                {isRelay ? 'Relay' : 'P2P'}
+                {isRelay ? (isWebRTCRelay ? 'TURN Relay' : 'Relay') : 'P2P'}
               </div>
             )}
 

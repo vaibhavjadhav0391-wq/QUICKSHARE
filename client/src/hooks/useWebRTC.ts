@@ -1,5 +1,5 @@
 import { useEffect, useRef, useCallback, useState } from 'react';
-import { WebRTCPeer, isWebRTCSupported } from '@/lib/webrtc';
+import { WebRTCPeer, isWebRTCSupported, CandidateType } from '@/lib/webrtc';
 
 interface UseWebRTCOptions {
   isInitiator: boolean; // PC = true, Mobile = false
@@ -18,6 +18,7 @@ interface UseWebRTCReturn {
   peer: WebRTCPeer | null;
   connectionState: RTCPeerConnectionState | null;
   iceState: RTCIceConnectionState | null;
+  candidateType: CandidateType;
   isSupported: boolean;
   /** Feed incoming signaling messages from the signaling server */
   handleOffer: (sdp: RTCSessionDescriptionInit) => Promise<void>;
@@ -27,19 +28,7 @@ interface UseWebRTCReturn {
 }
 
 /**
- * useWebRTC — manages the RTCPeerConnection lifecycle.
- *
- * Initiator (PC):
- *   1. On enabled=true → createDataChannel() → createOffer() → sendOffer()
- *   2. Wait for answer → setRemoteAnswer()
- *   3. Exchange ICE candidates
- *   4. DataChannel opens → onDataChannelOpen()
- *
- * Responder (Mobile):
- *   1. On enabled=true → wait for offer
- *   2. handleOffer() → setRemoteOffer() → sendAnswer()
- *   3. Exchange ICE candidates
- *   4. DataChannel received via pc.ondatachannel → onDataChannelOpen()
+ * useWebRTC — manages the RTCPeerConnection lifecycle and candidate pair monitoring.
  */
 export function useWebRTC(options: UseWebRTCOptions): UseWebRTCReturn {
   const {
@@ -57,41 +46,48 @@ export function useWebRTC(options: UseWebRTCOptions): UseWebRTCReturn {
   const peerRef = useRef<WebRTCPeer | null>(null);
   const [connectionState, setConnectionState] = useState<RTCPeerConnectionState | null>(null);
   const [iceState, setIceState] = useState<RTCIceConnectionState | null>(null);
+  const [candidateType, setCandidateType] = useState<CandidateType>(null);
   const isSupported = isWebRTCSupported();
 
   // ── INITIALIZE PEER ──
   useEffect(() => {
     if (!enabled || !isSupported) return;
 
-    console.log('[useWebRTC] Initializing peer, isInitiator =', isInitiator);
+    console.log('[useWebRTC Diagnostic] Initializing peer, isInitiator =', isInitiator);
 
     const peer = new WebRTCPeer({
       onIceCandidate: (candidate) => {
         sendIceCandidate(candidate);
       },
       onDataChannelOpen: (channel) => {
-        console.log('[useWebRTC] DataChannel opened');
+        console.log('[useWebRTC Diagnostic] DataChannel opened');
         onDataChannelOpen(channel);
+        peer.checkSelectedCandidatePair();
       },
       onDataChannelMessage: (event) => {
         onDataChannelMessage(event);
       },
       onDataChannelClose: () => {
-        console.log('[useWebRTC] DataChannel closed');
+        console.log('[useWebRTC Diagnostic] DataChannel closed');
         onDataChannelClose();
       },
       onConnectionStateChange: (state) => {
         setConnectionState(state);
         if (state === 'failed' || state === 'closed') {
+          console.warn(`[useWebRTC Diagnostic] Peer connection state '${state}' -> triggering fallback.`);
           onConnectionFailed();
         }
       },
       onIceConnectionStateChange: (state) => {
         setIceState(state);
         if (state === 'failed') {
-          console.warn('[useWebRTC] ICE connection failed — may need TURN server');
+          console.warn('[useWebRTC Diagnostic] ICE connection state FAILED -> triggering fallback.');
           onConnectionFailed();
         }
+      },
+      onCandidatePairSelected: (pair) => {
+        console.log(`[useWebRTC Diagnostic] Active candidate type set to: ${pair.type}`);
+        setCandidateType(pair.type);
       },
     });
 
@@ -102,11 +98,11 @@ export function useWebRTC(options: UseWebRTCOptions): UseWebRTCReturn {
       peer.createDataChannel();
       peer.createOffer()
         .then((offer) => {
-          console.log('[useWebRTC] Sending offer');
+          console.log('[useWebRTC Diagnostic] Offer created and sending via signaling');
           sendOffer(offer);
         })
         .catch((err) => {
-          console.error('[useWebRTC] Failed to create offer:', err);
+          console.error('[useWebRTC Diagnostic] Failed to create offer:', err);
           onConnectionFailed();
         });
     }
@@ -114,10 +110,21 @@ export function useWebRTC(options: UseWebRTCOptions): UseWebRTCReturn {
     return () => {
       peer.close();
       peerRef.current = null;
+      setCandidateType(null);
     };
-  // Note: callbacks are stable refs; only re-create peer when enabled/isInitiator changes
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [enabled, isInitiator, isSupported]);
+
+  // Periodic polling of getStats() while connected to catch any candidate re-nominations
+  useEffect(() => {
+    if (!enabled || !peerRef.current) return;
+    const interval = setInterval(() => {
+      if (peerRef.current && (iceState === 'connected' || iceState === 'completed')) {
+        peerRef.current.checkSelectedCandidatePair();
+      }
+    }, 2500);
+    return () => clearInterval(interval);
+  }, [enabled, iceState]);
 
   const pendingOfferRef = useRef<RTCSessionDescriptionInit | null>(null);
   const pendingCandidatesRef = useRef<RTCIceCandidateInit[]>([]);
@@ -125,16 +132,16 @@ export function useWebRTC(options: UseWebRTCOptions): UseWebRTCReturn {
   const handleOffer = useCallback(async (sdp: RTCSessionDescriptionInit) => {
     const peer = peerRef.current;
     if (!peer) {
-      console.log('[useWebRTC] handleOffer: queuing offer until peer ready');
+      console.log('[useWebRTC Diagnostic] handleOffer: queuing offer until peer ready');
       pendingOfferRef.current = sdp;
       return;
     }
-    console.log('[useWebRTC] Handling offer, creating answer');
+    console.log('[useWebRTC Diagnostic] Handling SDP Offer');
     try {
       const answer = await peer.setRemoteOffer(sdp);
       sendAnswer(answer);
     } catch (err) {
-      console.error('[useWebRTC] handleOffer error:', err);
+      console.error('[useWebRTC Diagnostic] handleOffer error:', err);
       onConnectionFailed();
     }
   }, [sendAnswer, onConnectionFailed]);
@@ -142,11 +149,11 @@ export function useWebRTC(options: UseWebRTCOptions): UseWebRTCReturn {
   const handleAnswer = useCallback(async (sdp: RTCSessionDescriptionInit) => {
     const peer = peerRef.current;
     if (!peer) return;
-    console.log('[useWebRTC] Handling answer');
+    console.log('[useWebRTC Diagnostic] Handling SDP Answer');
     try {
       await peer.setRemoteAnswer(sdp);
     } catch (err) {
-      console.error('[useWebRTC] handleAnswer error:', err);
+      console.error('[useWebRTC Diagnostic] handleAnswer error:', err);
     }
   }, []);
 
@@ -178,12 +185,14 @@ export function useWebRTC(options: UseWebRTCOptions): UseWebRTCReturn {
     peerRef.current = null;
     setConnectionState(null);
     setIceState(null);
+    setCandidateType(null);
   }, []);
 
   return {
     peer: peerRef.current,
     connectionState,
     iceState,
+    candidateType,
     isSupported,
     handleOffer,
     handleAnswer,
