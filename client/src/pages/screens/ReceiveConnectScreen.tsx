@@ -24,7 +24,9 @@ export function ReceiveConnectScreen({
   const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
 
   const fullCode = code.join('');
-  const codeReady = fullCode.length === CODE_LENGTH && !fullCode.includes('');
+  // IMPORTANT: String.prototype.includes('') is ALWAYS true (empty string is a
+  // substring of every string). We must check the array slots directly.
+  const codeReady = code.every(ch => ch !== '') && /^[A-Z0-9]{6}$/.test(fullCode);
 
   // ── Connect button handler (called explicitly by button or Enter key) ──
   const handleConnect = useCallback(() => {

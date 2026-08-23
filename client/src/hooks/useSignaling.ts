@@ -52,6 +52,8 @@ export function useSignaling(options: UseSignalingOptions): UseSignalingReturn {
   const [error, setError] = useState<string | null>(null);
   const socketRef = useRef<Socket | null>(null);
   const fallbackTimerRef = useRef<NodeJS.Timeout | null>(null);
+  // Queue a join-by-code call for when the socket connects
+  const pendingCodeRef = useRef<string | null>(null);
 
   // Keep latest callbacks in ref to avoid stale closure issues in socket listeners
   const callbacksRef = useRef({
@@ -107,6 +109,15 @@ export function useSignaling(options: UseSignalingOptions): UseSignalingReturn {
       } else if (role === 'mobile' && joinToken) {
         socket.emit('join-session', { token: joinToken });
         setState('connecting');
+      }
+
+      // Flush any queued join-by-code (emitted before socket was ready)
+      if (pendingCodeRef.current) {
+        const code = pendingCodeRef.current;
+        pendingCodeRef.current = null;
+        console.log('[Signaling] Flushing queued join-by-code:', code);
+        setState('connecting');
+        socket.emit('join-by-code', { shortCode: code });
       }
     };
 
@@ -273,8 +284,14 @@ export function useSignaling(options: UseSignalingOptions): UseSignalingReturn {
   }, [session, joinToken]);
 
   const joinByCode = useCallback((code: string) => {
-    if (!socketRef.current) return;
+    if (!socketRef.current || !socketRef.current.connected) {
+      // Socket not ready yet — queue it; handleConnect will flush it
+      console.log('[Signaling] Socket not ready, queuing join-by-code:', code);
+      pendingCodeRef.current = code;
+      return;
+    }
     setState('connecting');
+    console.log('[Signaling] Emitting join-by-code:', code);
     socketRef.current.emit('join-by-code', { shortCode: code });
   }, []);
 

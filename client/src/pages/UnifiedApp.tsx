@@ -55,6 +55,17 @@ export function UnifiedApp() {
   // Initialize to receiver role immediately when arriving via a join URL
   const userRole = useRef<'sender' | 'receiver'>(urlToken ? 'receiver' : 'sender');
 
+  // signalingRole controls when the socket connects and in what mode:
+  //   null     → no socket (idle — user hasn't started sharing or joining yet)
+  //   'pc'     → sender: create-session on connect
+  //   'mobile' → receiver: join-session on connect
+  //
+  // Key: when user clicks "Receive Files" but hasn't entered a code yet, we
+  // keep signalingRole=null so no accidental PC session is created.
+  const [signalingRole, setSignalingRole] = useState<'pc' | 'mobile' | null>(
+    urlToken ? 'mobile' : null
+  );
+
   // ── SIGNALING ──
   const {
     state: sigState,
@@ -68,7 +79,7 @@ export function UnifiedApp() {
     markConnected,
     sendFallbackChunk,
   } = useSignaling({
-    role: joinToken ? 'mobile' : 'pc',
+    role: signalingRole,
     joinToken,
     onPeerJoined: () => {
       console.log('[QuickTransfer] Peer connected (sender side)');
@@ -95,6 +106,8 @@ export function UnifiedApp() {
     },
     onCodeResolved: (token) => {
       console.log('[QuickTransfer] Code resolved to token:', token.slice(0, 8) + '...');
+      // Switch to mobile role so the new socket fires join-session with resolved token
+      setSignalingRole('mobile');
       setJoinToken(token);
       setIsConnecting(true);
       setConnectError(null);
@@ -159,6 +172,7 @@ export function UnifiedApp() {
       console.log('[QuickTransfer] Join URL detected:', urlToken.slice(0, 8) + '...');
       console.log('[QuickTransfer] Parsed session token:', urlToken);
       userRole.current = 'receiver';
+      setSignalingRole('mobile');
       setScreen('receive-connect');
       setIsConnecting(true);
       setConnectError(null);
@@ -236,6 +250,7 @@ export function UnifiedApp() {
   const handleReset = useCallback(() => {
     endSession();
     closePeer();
+    setSignalingRole(null);
     setJoinToken(undefined);
     setPeerJoined(false);
     setSelectedFiles([]);
@@ -269,7 +284,8 @@ export function UnifiedApp() {
   }, []);
 
   const handleStartSharing = useCallback(() => {
-    // useSignaling already auto-creates a session when role === 'pc'
+    // Activate PC/sender role in signaling — creates a session on connect
+    setSignalingRole('pc');
     setScreen('send-waiting');
   }, []);
 
@@ -285,14 +301,25 @@ export function UnifiedApp() {
     const trimmed = codeOrToken.trim();
     userRole.current = 'receiver';
 
-    if (trimmed.length <= 6) {
-      // Short code path: server resolves code → token via 'code-resolved' event
+    if (/^[A-Z0-9]{1,6}$/i.test(trimmed) && trimmed.length <= 6) {
+      // Short code path:
+      //   1. Ensure a socket is connected (signalingRole='mobile' with no joinToken
+      //      won't send join-session since joinToken is undefined — but it WILL
+      //      connect the socket so joinByCode can use it).
+      //   2. Server receives join-by-code, resolves to token, emits code-resolved.
+      //   3. onCodeResolved sets signalingRole='mobile' + joinToken=token.
+      //   4. Effect re-runs: new socket fires join-session {token}.
       console.log('[QuickTransfer] Code entered:', trimmed);
-      console.log('[QuickTransfer] Joining by code:', trimmed.toUpperCase());
+      console.log('[QuickTransfer] CODE NORMALIZED:', trimmed.toUpperCase());
+      console.log('[QuickTransfer] JOIN REQUEST (by code):', trimmed.toUpperCase());
+      // Ensure the socket is connecting (signalingRole='mobile' triggers connectSocket).
+      // joinByCode queues the code internally if socket isn't ready yet.
+      setSignalingRole(prev => prev ?? 'mobile');
       joinByCode(trimmed.toUpperCase());
     } else {
-      // Full token path (from QR scan or manual paste of a full token)
-      console.log('[QuickTransfer] Joining session by token:', trimmed.slice(0, 8) + '...');
+      // Full token path (from QR scan or link paste)
+      console.log('[QuickTransfer] JOIN REQUEST (by token):', trimmed.slice(0, 8) + '...');
+      setSignalingRole('mobile');
       setJoinToken(trimmed);
     }
   }, [joinByCode]);
